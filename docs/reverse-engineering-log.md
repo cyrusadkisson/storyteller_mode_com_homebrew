@@ -75,3 +75,23 @@ Goal: find a live channel from a computer/phone to the unit.
   next mine `CANPro-manager`/`j1939`/`PDM-Manager`/`Configuration.bin`, then
   confirm with a live capture (validate the rig on the known `0x724`/`0x788`
   frames first).
+
+## 2026-08-06 — Wire-level CAN map extracted
+
+- `Configuration.bin` is gzip → a 686 KB custom typed-node tree. Reverse-
+  engineered the node format (tags: `08bc6d46` message, `44b7fd36` signal,
+  `d9b7f8f2` container, `8f8eefea` value/string; interned strings, absolute
+  offset refs). Full format in `tools/parse_can_config.py` header.
+- Extracted a DBC: **30 messages, 129 signals** with CAN id, direction, DLC, and
+  per-signal start/end bit + scale + offset. Self-validates: AC/thermostat temps
+  come out as scale 0.03125 / offset −273 (textbook J1939 temp).
+- Covered subsystems: Rixen heater (std 11-bit 0x724–0x789, 0x788 = multiplexed
+  command), holding tanks (PGN 1FFB7), AC/HVAC ("FFC", PGN 1FFE2/1FEF9/…),
+  Lithionics BMS (PGN FF80 info, EF00 cmd/resp), inverter/charger (1FFD3/1FFD4/
+  1FF95/1FFCA). Head-unit SA = 0x46.
+- **PDM outputs (lights/pumps) are NOT in this table** — config only names PDM
+  inputs; PDM output control lives in `app/PDM-Manager` (J1939). Shared constant
+  `0x53f80018` in PDM-Manager + CANPro-manager → check on live bus. This is the
+  main remaining gap for controlling loads.
+- Wrote `tools/parse_can_config.py`, `data/can_messages.csv`/`.json`,
+  `docs/can-map.md`.

@@ -1,0 +1,1205 @@
+[
+ {
+  "name": "FFC_00EF_LITH_BMS_Command",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 418316288,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 63,
+    "bits": 32,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_00EF_LITH_BMS_Response",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 418316358,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 63,
+    "bits": 32,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_FF80_LITH_BMS_Info",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 419397702,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 39,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 40,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 41,
+    "end_bit": 41,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 42,
+    "end_bit": 42,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 43,
+    "end_bit": 43,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 44,
+    "end_bit": 44,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 45,
+    "end_bit": 45,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 46,
+    "end_bit": 46,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 47,
+    "end_bit": 47,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 48,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 49,
+    "end_bit": 49,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 50,
+    "end_bit": 50,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 51,
+    "end_bit": 51,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 52,
+    "end_bit": 52,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 53,
+    "end_bit": 53,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 54,
+    "end_bit": 54,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 55,
+    "end_bit": 55,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 56,
+    "end_bit": 56,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 57,
+    "end_bit": 57,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 58,
+    "end_bit": 58,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 59,
+    "end_bit": 59,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 60,
+    "end_bit": 60,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 61,
+    "end_bit": 61,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC Tx Vent Control 2",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 436068867,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 17,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 39,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 47,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 55,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 56,
+    "end_bit": 63,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 18,
+    "end_bit": 23,
+    "bits": 6,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC Tx Vent Control",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 436119043,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 9,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 10,
+    "end_bit": 11,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 12,
+    "end_bit": 13,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 14,
+    "end_bit": 15,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 25,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 26,
+    "end_bit": 29,
+    "bits": 4,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 30,
+    "end_bit": 31,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 39,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 47,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 55,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 56,
+    "end_bit": 63,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC Rx Vent Status 2",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436119384,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 30,
+    "end_bit": 31,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Tx Thermostat_Command",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 436140291,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 11,
+    "bits": 4,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 12,
+    "end_bit": 13,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 14,
+    "end_bit": 15,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 39,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 55,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_1FF95_CircuitCapacity",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 436180224,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rx_Ambient_Status",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436182104,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 23,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   }
+  ]
+ },
+ {
+  "name": "Rx_FWTankStatus",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436189103,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 39,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 55,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rx_GrayTankStatus",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436189103,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 39,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 55,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_Charger_AC_Status_2",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436194017,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 56,
+    "end_bit": 63,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_1FFD3_Invertor Command",
+  "frame_type": "Extended Frame Send",
+  "extended": true,
+  "direction": "TX",
+  "can_id": 436196096,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "FFC_1FFD4_Inverter Status",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436196577,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rx AC Unit Status",
+  "frame_type": "Extended Frame Receive",
+  "extended": true,
+  "direction": "RX",
+  "can_id": 436200024,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 7,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 10,
+    "bits": 3,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 11,
+    "end_bit": 13,
+    "bits": 3,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 14,
+    "end_bit": 15,
+    "bits": 2,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 23,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 24,
+    "end_bit": 39,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   },
+   {
+    "start_bit": 40,
+    "end_bit": 55,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen HC_Status (0x724)",
+  "frame_type": "Standard Frame Receive",
+  "extended": false,
+  "direction": "RX",
+  "can_id": 1828,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 15,
+    "bits": 16,
+    "scale": 0.01,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 31,
+    "bits": 16,
+    "scale": 0.1,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 47,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 48,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 49,
+    "end_bit": 49,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 50,
+    "end_bit": 50,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 51,
+    "end_bit": 51,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 52,
+    "end_bit": 52,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 53,
+    "end_bit": 53,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 54,
+    "end_bit": 54,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 55,
+    "end_bit": 55,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 56,
+    "end_bit": 63,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen HC_Diag (0x725)",
+  "frame_type": "Standard Frame Receive",
+  "extended": false,
+  "direction": "RX",
+  "can_id": 1829,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 24,
+    "end_bit": 31,
+    "bits": 8,
+    "scale": 0.1,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 0,
+    "end_bit": 23,
+    "bits": 24,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 47,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 63,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen HC_Diag2 (0x726)",
+  "frame_type": "Standard Frame Receive",
+  "extended": false,
+  "direction": "RX",
+  "can_id": 1830,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 15,
+    "bits": 16,
+    "scale": 0.01,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 31,
+    "bits": 16,
+    "scale": 0.01,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 47,
+    "bits": 16,
+    "scale": 0.01,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 48,
+    "end_bit": 63,
+    "bits": 16,
+    "scale": 0.1,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen HC_Fault (0x727)",
+  "frame_type": "Standard Frame Receive",
+  "extended": false,
+  "direction": "RX",
+  "can_id": 1831,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 31,
+    "bits": 32,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 32,
+    "end_bit": 63,
+    "bits": 32,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set TempTarget (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 23,
+    "bits": 16,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set FanSpeed (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set Furnace (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set Electric (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set Engine (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set Hot Water (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Set Preheat (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Send Eng Run (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Send Amb Temp (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 23,
+    "bits": 16,
+    "scale": 0.03125,
+    "offset": -273.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen Send Prime Fuel Time (0x788)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1928,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 8,
+    "end_bit": 15,
+    "bits": 8,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ },
+ {
+  "name": "Rixen HC_SetIO (0x789)",
+  "frame_type": "Standard Frame Send",
+  "extended": false,
+  "direction": "TX",
+  "can_id": 1929,
+  "dlc": 8,
+  "signals": [
+   {
+    "start_bit": 0,
+    "end_bit": 0,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 1,
+    "end_bit": 1,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 2,
+    "end_bit": 2,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 3,
+    "end_bit": 3,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 4,
+    "end_bit": 4,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 5,
+    "end_bit": 5,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 6,
+    "end_bit": 6,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 7,
+    "end_bit": 7,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 8,
+    "end_bit": 8,
+    "bits": 1,
+    "scale": 1.0,
+    "offset": 0.0
+   },
+   {
+    "start_bit": 16,
+    "end_bit": 47,
+    "bits": 32,
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+ }
+]

@@ -58,9 +58,12 @@ locally; do not commit or redistribute it.
 ## Status
 
 Early. Firmware unpacked and understood; connectivity path decided (CAN tap);
-**signal dictionary decoded** — 1758 signals, ~916 van-control relevant — see
-[`docs/signal-dictionary.md`](docs/signal-dictionary.md) and
-[`data/signals.control.csv`](data/signals.control.csv). Next: mine wire-level CAN
-mappings (`CANPro-manager`, `Configuration.bin`) and choose gateway hardware.
+**signal dictionary decoded** ([`docs/signal-dictionary.md`](docs/signal-dictionary.md),
+[`data/signals.control.csv`](data/signals.control.csv)); **wire-level CAN map
+extracted** — 30 messages / 129 signals from `Configuration.bin`
+([`docs/can-map.md`](docs/can-map.md),
+[`data/can_messages.csv`](data/can_messages.csv)). Next: reverse the PDM output
+protocol (`PDM-Manager`) so lights/pumps are controllable, then a live capture
+and gateway hardware.
 
 [`DeviceInformationAll.pbuff`]: docs/signal-dictionary.md
