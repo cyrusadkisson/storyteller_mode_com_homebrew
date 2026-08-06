@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Proprietary firmware & anything extracted from it.
+# These are Storyteller Overland / 3sigma (Enovation Controls) copyrighted,
+# signed software. Do NOT commit or redistribute — especially if this repo
+# is ever made public. Keep your own copy locally; it is not tracked here.
+# ---------------------------------------------------------------------------
+*.pv1
+*.pv0
+firmware/
+extract/
+extracted/
+unpacked/
+out/
+_scratch/
+
+# Extracted binary artifacts (proprietary)
+*.ifs
+*.pbuff
+*.byt
+Configuration.bin
+BinaryData/
+BootLogo/
+
+# ---------------------------------------------------------------------------
+# Tooling / local config
+# ---------------------------------------------------------------------------
+.claude/settings.local.json
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Node (for the companion app, later)
+node_modules/
+dist/
+build/
+.DS_Store
