@@ -1,0 +1,917 @@
+id,name,unit,role,subsystem
+836,J1939.Lithionics.LITH_Batt_DC_Power,W,VAR,Battery (Lithionics)
+837,J1939.Lithionics.LITH_Batt_DCCurr,A,VAR,Battery (Lithionics)
+838,J1939.Lithionics.LITH_Batt_DCVolt,V,VAR,Battery (Lithionics)
+839,J1939.Lithionics.LITH_BattID,,VAR,Battery (Lithionics)
+840,J1939.Lithionics.LITH_Batt_DischargeCapacityRemaining,,VAR,Battery (Lithionics)
+841,J1939.Lithionics.LITH_Batt_StateOfHealth,%,VAR,Battery (Lithionics)
+842,J1939.Lithionics.LITH_Batt_StateOCharge,%,VAR,Battery (Lithionics)
+843,J1939.Lithionics.LITH_Batt_Temp,C,VAR,Battery (Lithionics)
+844,J1939.Lithionics.LITH_Batt_TimeRemaining,min,VAR,Battery (Lithionics)
+1001,Lith_Num_Sensors,,VAR,Battery (Lithionics)
+1002,Lith_BMSTemp,,VAR,Battery (Lithionics)
+1003,Lith_BMS_Warn_ChargeSource,,VAR,Battery (Lithionics)
+1004,Lith_BMS_Warn_NeverDie,,VAR,Battery (Lithionics)
+1005,Lith_MaxTemp,,VAR,Battery (Lithionics)
+1006,Lith_MinTemp,,VAR,Battery (Lithionics)
+1007,Lith_BMS_Warn_HighVoltage,,VAR,Battery (Lithionics)
+1008,Lith_BMS_Warn_CellLoopOpen,,VAR,Battery (Lithionics)
+1009,Lith_BMS_Warn_BelowRVC,,VAR,Battery (Lithionics)
+1010,Lith_BMS_Warn_AUXContacts_State,,VAR,Battery (Lithionics)
+1011,Lith_BMS_Warn_AuxContacts_Err,,VAR,Battery (Lithionics)
+1012,Lith_BMS_Warn_PreCharge_Err,,VAR,Battery (Lithionics)
+1013,Lith_BMS_Warn_ContactorFlutter,,VAR,Battery (Lithionics)
+1014,Lith_BMS_Warn_ACPower_State,,VAR,Battery (Lithionics)
+1015,Lith_BMS_Warn_TSMCharger_State,,VAR,Battery (Lithionics)
+1016,Lith_BMS_Warn_TSMCharger_Err,,VAR,Battery (Lithionics)
+1017,Lith_BMS_Warn_TempIntSensor_Err,,VAR,Battery (Lithionics)
+1018,Lith_BMS_Warn_LowVoltage,,VAR,Battery (Lithionics)
+1019,Lith_BMS_Warn_BattProtection,,VAR,Battery (Lithionics)
+1020,Lith_BMS_Warn_PowerOff,,VAR,Battery (Lithionics)
+1021,Lith_BMS_Warn_AGSR_State,,VAR,Battery (Lithionics)
+1022,Lith_BMS_Warn_HotTemp_State,,VAR,Battery (Lithionics)
+1023,Lith_BMS_Warn_ColdTemp_State,,VAR,Battery (Lithionics)
+1024,Lith_BMS_Warn_AUXIN1_State,,VAR,Battery (Lithionics)
+1025,Lith_BMS_Warn_ChargeDisable_State,,VAR,Battery (Lithionics)
+1026,Lith_BMS_Warn_Overcurrent_State,,VAR,Battery (Lithionics)
+1141,Lithionics_PowerFlow_Converted,W,VAR,Battery (Lithionics)
+1338,Lith_Send,,VAR,Battery (Lithionics)
+1339,Lith_On,,VAR,Battery (Lithionics)
+1340,Lith_Off,,VAR,Battery (Lithionics)
+43,J1939.Engine.Engine Speed,RPM,VAR,Bus/infra
+54,CANPort1.Resistor,,VAR,Bus/infra
+56,CANPort2.Resistor,,VAR,Bus/infra
+58,CANPort1.Address,,VAR,Bus/infra
+60,CANPort2.Address,,VAR,Bus/infra
+62,CANPort3.Address,,VAR,Bus/infra
+71,Modbus.Exception.Slave.Address,,VAR,Bus/infra
+73,Modbus.Exception.Slave.Group,,VAR,Bus/infra
+74,Modbus.Exception.Code,,VAR,Bus/infra
+133,Modbus.BeepPattern,,VAR,Bus/infra
+138,Modbus.Protocal.Mode.Serial1,,VAR,Bus/infra
+152,J1939Logger.LogSize,,VAR,Bus/infra
+153,J1939Logger.Port1CurrentSize,,VAR,Bus/infra
+154,J1939Logger.Port2CurrentSize,,VAR,Bus/infra
+159,CANPort1.BaudRate,,VAR,Bus/infra
+160,CANPort3.BaudRate,,VAR,Bus/infra
+161,CANPort2.BaudRate,,VAR,Bus/infra
+169,J1939Logger.Port1LogOutputPercentage,%,VAR,Bus/infra
+170,J1939Logger.Port2LogOutputPercentage,%,VAR,Bus/infra
+225,CANUpdate.PercentComplete,,VAR,Bus/infra
+226,CANUpdate.ErrorCode,,VAR,Bus/infra
+914,J1939 Log Output Error,,VAR,Bus/infra
+915,J1939 Log Output Complete,,VAR,Bus/infra
+918,J1939 Port 2 Log Output Error,,VAR,Bus/infra
+919,J1939 Port 2 Log Output Complete,,VAR,Bus/infra
+920,CANPort1.AddressClaimed,,VAR,Bus/infra
+921,CANPort2.AddressClaimed,,VAR,Bus/infra
+934,CANUpdate.UpdateSuccess,,VAR,Bus/infra
+935,CANUpdate.UpdateError,,VAR,Bus/infra
+936,CANUpdate.UpdateUpToDate,,VAR,Bus/infra
+937,CANUpdate.UserAbort,,VAR,Bus/infra
+938,CANUpdate.MessageReceived,,VAR,Bus/infra
+34268,J1939Logger.FileName,,VAR,Bus/infra
+34281,CANUpdate.ErrorMessage,,VAR,Bus/infra
+34282,CANUpdate.CurrentVersion,,VAR,Bus/infra
+14,Brightness.Day,,VAR,Comfort/loads (logical)
+15,Brightness.Night,,VAR,Comfort/loads (logical)
+148,HeaterEnabled,,VAR,Comfort/loads (logical)
+191,Cpu.Temperature,C,VAR,Comfort/loads (logical)
+229,Cpu.PmicTemperature,,VAR,Comfort/loads (logical)
+231,System.AutoBrightness,,VAR,Comfort/loads (logical)
+403,Radio.MasterVolume,,VAR,Comfort/loads (logical)
+404,Radio.MasterBass,,VAR,Comfort/loads (logical)
+405,Radio.MasterTreble,,VAR,Comfort/loads (logical)
+406,Radio.MasterBalance,,VAR,Comfort/loads (logical)
+407,Radio.MasterFade,,VAR,Comfort/loads (logical)
+408,Radio.MasterLoudness,,VAR,Comfort/loads (logical)
+409,Radio.MasterEqualizer,,VAR,Comfort/loads (logical)
+410,Radio.MasterSubLevel,,VAR,Comfort/loads (logical)
+411,Radio.MasterMiddle,,VAR,Comfort/loads (logical)
+469,Radio.GoToPreset,,VAR,Comfort/loads (logical)
+475,Radio.PresetScanStatus,,VAR,Comfort/loads (logical)
+565,AwningOUTDelay,,VAR,Comfort/loads (logical)
+569,CabinLightBrightness,,VAR,Comfort/loads (logical)
+570,TMR Light Button Delay,,VAR,Comfort/loads (logical)
+572,ReadingLightBrightness,,VAR,Comfort/loads (logical)
+573,CargoLightsBrightness,,VAR,Comfort/loads (logical)
+574,AwningLightBrightness,,VAR,Comfort/loads (logical)
+600,Rx_FWTankStatus,,VAR,Comfort/loads (logical)
+604,FWTankSize,,VAR,Comfort/loads (logical)
+608,GrayTankSize,,VAR,Comfort/loads (logical)
+609,Rx_GrayTankStatus,,VAR,Comfort/loads (logical)
+616,RxACFanMode,%,VAR,Comfort/loads (logical)
+617,RxACScheduleMode,,VAR,Comfort/loads (logical)
+618,RxACFanSpeed,,VAR,Comfort/loads (logical)
+619,RxACSetpointTempHeat,C,VAR,Comfort/loads (logical)
+620,RxACSetpointTempCool,C,VAR,Comfort/loads (logical)
+622,TxACSetpointTempHeat,C,VAR,Comfort/loads (logical)
+623,TxACSetpointTempCool,C,VAR,Comfort/loads (logical)
+624,TxACFanMode,,VAR,Comfort/loads (logical)
+625,TxACScheduleMode,,VAR,Comfort/loads (logical)
+626,TxACFanSpeed,,VAR,Comfort/loads (logical)
+629,ACSetpointHeatF,,VAR,Comfort/loads (logical)
+630,ACSetpointCoolF,,VAR,Comfort/loads (logical)
+632,ACSetpointHeatC,,VAR,Comfort/loads (logical)
+633,ACSetpointCoolC,,VAR,Comfort/loads (logical)
+638,AwningOutEnabled,,VAR,Comfort/loads (logical)
+640,TR Awning Enable DealyTMR,,VAR,Comfort/loads (logical)
+645,MasterLightSwitch,,VAR,Comfort/loads (logical)
+646,CargoPreset1,,VAR,Comfort/loads (logical)
+647,CargoPreset2,,VAR,Comfort/loads (logical)
+648,CabinPreset1,,VAR,Comfort/loads (logical)
+649,CabinPreset2,,VAR,Comfort/loads (logical)
+650,CargoPresetMagic,,VAR,Comfort/loads (logical)
+651,CabinPresetMagic,,VAR,Comfort/loads (logical)
+652,ReadingPreset1,,VAR,Comfort/loads (logical)
+653,ReadingPreset2,,VAR,Comfort/loads (logical)
+654,ReadingPresetMagic,,VAR,Comfort/loads (logical)
+655,AwningPreset1,,VAR,Comfort/loads (logical)
+656,AwningPreset2,,VAR,Comfort/loads (logical)
+657,AwningPresetMagic,,VAR,Comfort/loads (logical)
+658,PresetSelector,,VAR,Comfort/loads (logical)
+659,ActivePreset,,VAR,Comfort/loads (logical)
+660,HotWaterActive,,VAR,Comfort/loads (logical)
+661,RxAmbientTemp,C,VAR,Comfort/loads (logical)
+670,CabinBrightnessDisplay,,VAR,Comfort/loads (logical)
+671,CargoBrightnessDisplay,,VAR,Comfort/loads (logical)
+672,ReadingBrightnessDisplay,,VAR,Comfort/loads (logical)
+673,AwningBrightnessDisplay,,VAR,Comfort/loads (logical)
+676,MasterBrightness,,VAR,Comfort/loads (logical)
+677,MasterBrightnessDisplay,,VAR,Comfort/loads (logical)
+678,GrayTankRevel,,VAR,Comfort/loads (logical)
+679,FWTankRevel,,VAR,Comfort/loads (logical)
+680,TEMPHVAC,,VAR,Comfort/loads (logical)
+682,TMR Light Button Delay EXT,,VAR,Comfort/loads (logical)
+687,APE Awning motor Out TimerVariable,,VAR,Comfort/loads (logical)
+688,AwningINEnabled,,VAR,Comfort/loads (logical)
+689,AwningINDelay,,VAR,Comfort/loads (logical)
+690,HeatSettingTemp,,VAR,Comfort/loads (logical)
+695,Preset1AwningOnOff,,VAR,Comfort/loads (logical)
+696,Preset2AwningOnOff,,VAR,Comfort/loads (logical)
+697,PresetMagicAwningOnOff,,VAR,Comfort/loads (logical)
+698,Preset1CargoOnOff,,VAR,Comfort/loads (logical)
+699,Preset2CargoOnOff,,VAR,Comfort/loads (logical)
+700,PresetMagicCargoOnOff,,VAR,Comfort/loads (logical)
+701,Preset1CabinOnOff,,VAR,Comfort/loads (logical)
+702,Preset2CabinOnOff,,VAR,Comfort/loads (logical)
+703,PresetMagicCabinOnOff,,VAR,Comfort/loads (logical)
+704,Preset1ReadingOnOff,,VAR,Comfort/loads (logical)
+705,Preset2ReadingOnOff,,VAR,Comfort/loads (logical)
+706,PresetMagicReadingOnOff,,VAR,Comfort/loads (logical)
+707,AwningAutoRetract,,VAR,Comfort/loads (logical)
+708,TankLvlAlarm,,VAR,Comfort/loads (logical)
+709,TMR CE TankLvlAlarm ,,VAR,Comfort/loads (logical)
+721,FanMode,,VAR,Comfort/loads (logical)
+723,VentFanSpeedSetting,,VAR,Comfort/loads (logical)
+724,VentFanDirection,,VAR,Comfort/loads (logical)
+730,VentFanSpeedTemp,,VAR,Comfort/loads (logical)
+738,VentFanSpeedReveal,,VAR,Comfort/loads (logical)
+744,TMR TR Dim Delay Awning 500 secondTimerVariable,,VAR,Comfort/loads (logical)
+745,TR TMR 500ms Delay Cabin,,VAR,Comfort/loads (logical)
+746,TR TMR 500ms Delay Cargo,,VAR,Comfort/loads (logical)
+751,BrightnessTemp,,VAR,Comfort/loads (logical)
+752,TANKLVLDelay,,VAR,Comfort/loads (logical)
+753,CE TANKLVLDelay ONTimerVariable,,VAR,Comfort/loads (logical)
+755,TR Set Brightness backTimerVariable,,VAR,Comfort/loads (logical)
+757,GlycolPumpOR,,VAR,Comfort/loads (logical)
+759,TMR CE GlycolPumpOR Toggle,,VAR,Comfort/loads (logical)
+761,DomePositionTemp,,VAR,Comfort/loads (logical)
+765,VentFanDirectionTemp,,VAR,Comfort/loads (logical)
+766,TM GalleyFan,,VAR,Comfort/loads (logical)
+767,AwningMaster,,VAR,Comfort/loads (logical)
+768,CabinMaster,,VAR,Comfort/loads (logical)
+769,ReadingMaster,,VAR,Comfort/loads (logical)
+770,CargoMaster,,VAR,Comfort/loads (logical)
+771,MasterAwningOnOff,,VAR,Comfort/loads (logical)
+772,MasterCabinOnOff,,VAR,Comfort/loads (logical)
+773,MasterCargoOnOff,,VAR,Comfort/loads (logical)
+774,MasterReadingOnOff,,VAR,Comfort/loads (logical)
+1033,TR Cabin ON,,VAR,Comfort/loads (logical)
+1034,TR Light Press Dimmer Complete,,VAR,Comfort/loads (logical)
+1037,TR Light Button Delay,,VAR,Comfort/loads (logical)
+1039,TR Reading ON,,VAR,Comfort/loads (logical)
+1044,TR Cargo ON,,VAR,Comfort/loads (logical)
+1050,TR Awning ON,,VAR,Comfort/loads (logical)
+1051,TRC Awning ON ,,VAR,Comfort/loads (logical)
+1052,CE AwningLightBrightness EXT Switch,,VAR,Comfort/loads (logical)
+1053,CE CabinLightBrightness EXT,,VAR,Comfort/loads (logical)
+1054,CE CargoLightsBrightness EXT,,VAR,Comfort/loads (logical)
+1055,CE ReadingLightBrightness EXT,,VAR,Comfort/loads (logical)
+1056,TRC Cabin ON ,,VAR,Comfort/loads (logical)
+1057,TRC Reading ON ,,VAR,Comfort/loads (logical)
+1076,CE TxACSetpointTempHeat INC,,VAR,Comfort/loads (logical)
+1077,CE TxACSetpointTempHeat Dec,,VAR,Comfort/loads (logical)
+1078,cmd_Rix_ToggleHotWater,,VAR,Comfort/loads (logical)
+1078,CE TxACSetpointTempCool  INC,,VAR,Comfort/loads (logical)
+1079,CE TxACSetpointTempCool DEC,,VAR,Comfort/loads (logical)
+1081,cmd_Rix_SourceSetFurnace,,VAR,Comfort/loads (logical)
+1082,cmd_Rix_SetFanSpeed,%,VAR,Comfort/loads (logical)
+1083,cmd_Rix_SetTempTarget,C,VAR,Comfort/loads (logical)
+1084,CE TxACSetpointTempHeat Tx,,VAR,Comfort/loads (logical)
+1085,CE ACSetpointHeatF INC,,VAR,Comfort/loads (logical)
+1086,CE ACSetpointHeatF Dec,,VAR,Comfort/loads (logical)
+1089,CE ACSetpointCoolF INC,,VAR,Comfort/loads (logical)
+1090,CE ACSetpointCoolF Dec,,VAR,Comfort/loads (logical)
+1091,CE ACSetpointHeatC INC,,VAR,Comfort/loads (logical)
+1092,CE ACSetpointHeatC Dec,,VAR,Comfort/loads (logical)
+1093,CE ACSetpointCoolC INC,,VAR,Comfort/loads (logical)
+1094,CE ACSetpointCoolC Dec,,VAR,Comfort/loads (logical)
+1095,CE TxACSetpointTempCool Tx,,VAR,Comfort/loads (logical)
+1103,CE AwningOutEnabled ON,,VAR,Comfort/loads (logical)
+1104,CE AwningEnabled Out OFF,,VAR,Comfort/loads (logical)
+1107,TR Awning Enable Dealy,,VAR,Comfort/loads (logical)
+1108,TRC Awning Enable Dealy ,,VAR,Comfort/loads (logical)
+1109,TRC Cargo ON ,,VAR,Comfort/loads (logical)
+1111,CE MasterLightSwitch Ext Switch,,VAR,Comfort/loads (logical)
+1112,SC Lighting Preset,,VAR,Comfort/loads (logical)
+1113,UE_Save_Light_Preset,,VAR,Comfort/loads (logical)
+1114,CE PresetSelector Clear,,VAR,Comfort/loads (logical)
+1115,CE PresetSelector Preset 1,,VAR,Comfort/loads (logical)
+1116,CE PresetSelector Preset 2,,VAR,Comfort/loads (logical)
+1117,CE PresetSelector Magic,,VAR,Comfort/loads (logical)
+1118,CE ActivatePreset Clear ,,VAR,Comfort/loads (logical)
+1119,CE ActivatePreset Preset 1,,VAR,Comfort/loads (logical)
+1120,CE ActivatePreset 2,,VAR,Comfort/loads (logical)
+1121,CE ActivatePreset Magic,,VAR,Comfort/loads (logical)
+1122,CE AwningLightBrightness Preset,,VAR,Comfort/loads (logical)
+1123,CE CabinLightBrightness Preset,,VAR,Comfort/loads (logical)
+1124,CE CargoLightsBrightness Preset,,VAR,Comfort/loads (logical)
+1125,CE ReadingLightBrightness Preset,,VAR,Comfort/loads (logical)
+1126,CE MasterLightSwitch ON,,VAR,Comfort/loads (logical)
+1127,CE MasterLightSwitch OFF,,VAR,Comfort/loads (logical)
+1129,CE HotWaterActive Toggle,,VAR,Comfort/loads (logical)
+1130,cmd_Rix_SetFanBlue,,VAR,Comfort/loads (logical)
+1130,CE TxACFanSpeed LOW,,VAR,Comfort/loads (logical)
+1131,cmd_Rix_SetFanOut,,VAR,Comfort/loads (logical)
+1131,CE TxACFanSpeed High,,VAR,Comfort/loads (logical)
+1132,cmd_Rix_SetPumpOut,,VAR,Comfort/loads (logical)
+1132,CE TxACFanMode Auto,,VAR,Comfort/loads (logical)
+1133,cmd_Rix_SetPumpHighLow,,VAR,Comfort/loads (logical)
+1133,CE TxACFanMode Manual,,VAR,Comfort/loads (logical)
+1134,CE CabinBrightnessDisplay Reveal,,VAR,Comfort/loads (logical)
+1135,Ce CabinLightBrightness slider ,,VAR,Comfort/loads (logical)
+1136,CE CargoBrightnessDisplay Reveal,,VAR,Comfort/loads (logical)
+1137,CE CargoLightsBrightness Slider,,VAR,Comfort/loads (logical)
+1138,CE ReadingBrightnessDisplay Reveal,,VAR,Comfort/loads (logical)
+1139,Heater_Source,,VAR,Comfort/loads (logical)
+1139,CE ReadingLightBrightness Slider,,VAR,Comfort/loads (logical)
+1140,CE AwningBrightnessDisplay Reveal,,VAR,Comfort/loads (logical)
+1141,CE AwningLightBrightness Slider,,VAR,Comfort/loads (logical)
+1143,CE MainPageActive Climate,,VAR,Comfort/loads (logical)
+1144,CE MainPageActive Lights,,VAR,Comfort/loads (logical)
+1145,UE SaveAwningBrightness,,VAR,Comfort/loads (logical)
+1146,UE SaveCabinBrightness,,VAR,Comfort/loads (logical)
+1147,UE SaveCargoBrightness,,VAR,Comfort/loads (logical)
+1148,UE SaveReadingBrightness,,VAR,Comfort/loads (logical)
+1149,APE Master Brightness ,,VAR,Comfort/loads (logical)
+1150,UE Awning Brightness Changed,,VAR,Comfort/loads (logical)
+1153,UE ReadingLightBrightness_Changed,,VAR,Comfort/loads (logical)
+1154,UE CargoLightsBrightness_Changed,,VAR,Comfort/loads (logical)
+1156,UE CabinLightBrightness_Changed,,VAR,Comfort/loads (logical)
+1158,CE MasterBrightness Slider,,VAR,Comfort/loads (logical)
+1159,CE MasterBrightness Reveal,,VAR,Comfort/loads (logical)
+1160,CE MasterLightSwitch Toggle,,VAR,Comfort/loads (logical)
+1161,CE GrayTankRevel ,,VAR,Comfort/loads (logical)
+1162,CE FWTankRevel,,VAR,Comfort/loads (logical)
+1164,UE Fan Manual Low,,VAR,Comfort/loads (logical)
+1165,UE Fan Manual High,,VAR,Comfort/loads (logical)
+1166,CE TEMPHVac Cool,,VAR,Comfort/loads (logical)
+1167,CE TEMPHVac Heat,,VAR,Comfort/loads (logical)
+1168,CE TEMPHVac FAN ONLY,,VAR,Comfort/loads (logical)
+1169,CE TEMPHVac Reset,,VAR,Comfort/loads (logical)
+1171,UE Fan Auto High,,VAR,Comfort/loads (logical)
+1172,UE Fan Auto Low,,VAR,Comfort/loads (logical)
+1173,CE AwningLightBrightness Full,,VAR,Comfort/loads (logical)
+1174,CE CabinLightBrightness FULL,,VAR,Comfort/loads (logical)
+1175,TR Cabin ON EXT,,VAR,Comfort/loads (logical)
+1176,TRC Cabin ON EXT,,VAR,Comfort/loads (logical)
+1177,TR Cargo ON EXT,,VAR,Comfort/loads (logical)
+1178,TRC Cargo ON EXT,,VAR,Comfort/loads (logical)
+1179,CE CargoLightsBrightness Full,,VAR,Comfort/loads (logical)
+1180,TR Awning ON EXT,,VAR,Comfort/loads (logical)
+1181,TRC Awning ON  EXT,,VAR,Comfort/loads (logical)
+1182,TR Light Button Delay Ext,,VAR,Comfort/loads (logical)
+1183,TEMP furnace_was_on,,VAR,Comfort/loads (logical)
+1183,CE ReadingLightBrightness Full,,VAR,Comfort/loads (logical)
+1184,Hot_Water_Status,,VAR,Comfort/loads (logical)
+1184,TEMPHVAC_Changed,,VAR,Comfort/loads (logical)
+1192,Ce CabinLightBrightness Master,,VAR,Comfort/loads (logical)
+1193,CE CargoLightsBrightness Master,,VAR,Comfort/loads (logical)
+1194,CE ReadingLightBrightness Master,,VAR,Comfort/loads (logical)
+1195,Temp_HeaterFanSpeed,,VAR,Comfort/loads (logical)
+1195,CE AwningLightBrightness Master,,VAR,Comfort/loads (logical)
+1196,TM_AmbientTemp,,VAR,Comfort/loads (logical)
+1196,SCE Master Switch,,VAR,Comfort/loads (logical)
+1197,Cab_Temp,C,VAR,Comfort/loads (logical)
+1197,APE Awning motor Movement,,VAR,Comfort/loads (logical)
+1198,CE AwningEnabledIN,,VAR,Comfort/loads (logical)
+1199,CE AwningINEnabled OFF,,VAR,Comfort/loads (logical)
+1200,CE HeatSettingTemp ,,VAR,Comfort/loads (logical)
+1202,CE ACSetpointHeatF Auto,,VAR,Comfort/loads (logical)
+1203,CE ACSetpointHeatF Auto Condition,,VAR,Comfort/loads (logical)
+1205,TM_HotWaterCheck,,VAR,Comfort/loads (logical)
+1206,GalleyFan_MinSpeed,,VAR,Comfort/loads (logical)
+1206,UE SaveFan Data,,VAR,Comfort/loads (logical)
+1212,UE TempVariableUpdate,,VAR,Comfort/loads (logical)
+1213,CE TxACFanSpeed OFF,,VAR,Comfort/loads (logical)
+1214,GalleyFan_MaxSpeed,,VAR,Comfort/loads (logical)
+1215,GalleyFan_MinTempC,C,VAR,Comfort/loads (logical)
+1216,GalleyFan_MaxTempC,C,VAR,Comfort/loads (logical)
+1218,BathBrightnessDisplay,,VAR,Comfort/loads (logical)
+1218,CE TankLvlAlarm ,,VAR,Comfort/loads (logical)
+1219,BathLightBrightness,,VAR,Comfort/loads (logical)
+1219,TR Tank LVL Fault,,VAR,Comfort/loads (logical)
+1220,Preset1BathOnOff,,VAR,Comfort/loads (logical)
+1220,TR Close Tank Pop up,,VAR,Comfort/loads (logical)
+1221,Preset2BathOnOff,,VAR,Comfort/loads (logical)
+1221,TRC Tank LVL Fault ,,VAR,Comfort/loads (logical)
+1222,PresetMagicBathOnOff,,VAR,Comfort/loads (logical)
+1222,TRC Close Tank Pop up,,VAR,Comfort/loads (logical)
+1223,BathMaster,,VAR,Comfort/loads (logical)
+1223,UE Check Tank LVL Alarms ,,VAR,Comfort/loads (logical)
+1224,BathPreset1,,VAR,Comfort/loads (logical)
+1224,CE Brightness.Day INC,,VAR,Comfort/loads (logical)
+1225,BathPreset2,,VAR,Comfort/loads (logical)
+1225,CE Brightness.Day Dec,,VAR,Comfort/loads (logical)
+1226,BathPresetMagic,,VAR,Comfort/loads (logical)
+1226,Brightness Changed,,VAR,Comfort/loads (logical)
+1227,TR TMR 500ms Delay Bath,,VAR,Comfort/loads (logical)
+1228,MasterBathOnOff,,VAR,Comfort/loads (logical)
+1230,TM SinkPumpRamp,,VAR,Comfort/loads (logical)
+1231,TM Aux1Ramp,,VAR,Comfort/loads (logical)
+1236,CE DomePosition Push Temp,,VAR,Comfort/loads (logical)
+1237,CE VentFanDirection ,,VAR,Comfort/loads (logical)
+1239,CE VentFanSpeedSetting ,,VAR,Comfort/loads (logical)
+1241,VentFanDirection_Changed,,VAR,Comfort/loads (logical)
+1242,VentFanSpeedTemp_Changed,,VAR,Comfort/loads (logical)
+1247,CE VentFanSpeedReveal ,,VAR,Comfort/loads (logical)
+1248,VentFanSpeedReveal_Changed,,VAR,Comfort/loads (logical)
+1249,CE VentFanSpeedTemp Slider,,VAR,Comfort/loads (logical)
+1254,TR Awning OFF,,VAR,Comfort/loads (logical)
+1255,TRC Awning OFF ,,VAR,Comfort/loads (logical)
+1256,TR Dim Delay Awning 500 second,,VAR,Comfort/loads (logical)
+1257,TR Cabin Off,,VAR,Comfort/loads (logical)
+1258,TRC Cabin Off ,,VAR,Comfort/loads (logical)
+1259,TR Cargo Off,,VAR,Comfort/loads (logical)
+1260,TRC Cargo Off ,,VAR,Comfort/loads (logical)
+1263,CE TxACFanSpeed AC ON,,VAR,Comfort/loads (logical)
+1264,TR 500ms Delay Cabin,,VAR,Comfort/loads (logical)
+1265,TR 500ms Delay Cargo,,VAR,Comfort/loads (logical)
+1279,TR Brightness 30,,VAR,Comfort/loads (logical)
+1280,TRC Brightness 0,,VAR,Comfort/loads (logical)
+1282,CE Brightness.Day Temp,,VAR,Comfort/loads (logical)
+1283,CE Brightness.Day Ramp,,VAR,Comfort/loads (logical)
+1284,CE BrightnessTemp INC,,VAR,Comfort/loads (logical)
+1285,CE BrightnessTemp DEC,,VAR,Comfort/loads (logical)
+1286,CE TANKLVLDelay ON,,VAR,Comfort/loads (logical)
+1287,UE Awning in Switch Active,,VAR,Comfort/loads (logical)
+1288,UE Awning in Switch Active Condition,,VAR,Comfort/loads (logical)
+1289,TR Awning Switch Active,,VAR,Comfort/loads (logical)
+1290,TR Awning out,,VAR,Comfort/loads (logical)
+1291,TR Awning In,,VAR,Comfort/loads (logical)
+1293,TR Awning Done,,VAR,Comfort/loads (logical)
+1294,TRC Awning In ,,VAR,Comfort/loads (logical)
+1296,TRC Awning out ,,VAR,Comfort/loads (logical)
+1297,TRC Awning Switch Active,,VAR,Comfort/loads (logical)
+1299,TR Set Brightness back,,VAR,Comfort/loads (logical)
+1301,CE GlycolPumpOR Toggle,,VAR,Comfort/loads (logical)
+1314,CE VentFanSpeedSetting Auto,,VAR,Comfort/loads (logical)
+1315,DomePositionTemp_Changed,,VAR,Comfort/loads (logical)
+1316,CE DomePositionTemp ,,VAR,Comfort/loads (logical)
+1318,CE VentFanDirection Out,,VAR,Comfort/loads (logical)
+1320,CE VentFanDirection Temp Set,,VAR,Comfort/loads (logical)
+1321,CE VentFanDirection TEMP,,VAR,Comfort/loads (logical)
+1323,SCE Solar_Backup,,VAR,Comfort/loads (logical)
+1324,CE ActivatePreset Master,,VAR,Comfort/loads (logical)
+1325,CE PresetSelector Master,,VAR,Comfort/loads (logical)
+1327,CE Diag_Selected 2 (Furnace),,VAR,Comfort/loads (logical)
+1353,CE Diag_Selected 3 (Tanks),,VAR,Comfort/loads (logical)
+1354,CE Diag_Selected 4 (Lights),,VAR,Comfort/loads (logical)
+1357,CE cmd_Rix_SetFanSpeed,,VAR,Comfort/loads (logical)
+1359,SCE_SetFanSpeed,,VAR,Comfort/loads (logical)
+1360,SCE_SetTempTarget,,VAR,Comfort/loads (logical)
+1363,SCE_SetFurnaceOut,,VAR,Comfort/loads (logical)
+1368,CE cmd_Rix_SourceSetFurnace,,VAR,Comfort/loads (logical)
+1369,CE cmd_Rix_ToggleHotWater,,VAR,Comfort/loads (logical)
+1373,CE Heater_Source Fuel,,VAR,Comfort/loads (logical)
+1374,CE Heater_Source Elec,,VAR,Comfort/loads (logical)
+1375,CE Heater_Source Dual,,VAR,Comfort/loads (logical)
+1376,Heater_SourceUpdate,,VAR,Comfort/loads (logical)
+1378,CE cmd_Rix_SourceSetFurnace Active,,VAR,Comfort/loads (logical)
+1379,CE cmd_Rix_SourceSetFurnace Inactive,,VAR,Comfort/loads (logical)
+1380,CE rix_FurnaceOverride Active,,VAR,Comfort/loads (logical)
+1381,CE rix_FurnaceOverride Inactive,,VAR,Comfort/loads (logical)
+1382,SCE_FurnaceOverride,,VAR,Comfort/loads (logical)
+1383,CE rix_FurnaceOverride Toggle,,VAR,Comfort/loads (logical)
+1388,CE cmd_Rix_SetFanSpeed 15,,VAR,Comfort/loads (logical)
+1389,CE cmd_Rix_SetFanSpeed 40,,VAR,Comfort/loads (logical)
+1390,CE cmd_Rix_SetFanSpeed 100,,VAR,Comfort/loads (logical)
+1391,CE cmd_Rix_SetTempTarget,,VAR,Comfort/loads (logical)
+1392,SCE Hot Water ON,,VAR,Comfort/loads (logical)
+1393,CE furnace_was_on 1,,VAR,Comfort/loads (logical)
+1394,CE furnace_was_on 0,,VAR,Comfort/loads (logical)
+1395,CE Hot_Water_Status 1,,VAR,Comfort/loads (logical)
+1396,CE Hot_Water_Status 0,,VAR,Comfort/loads (logical)
+1397,Send Heater On,,VAR,Comfort/loads (logical)
+1400,Furnace On to Fan Speed,,VAR,Comfort/loads (logical)
+1401,Fan Speed to Temp Set,,VAR,Comfort/loads (logical)
+1402,CND cmd_Rix_SourceSetFurnace,,VAR,Comfort/loads (logical)
+1403,TR Heater Off,,VAR,Comfort/loads (logical)
+1404,CE TxACOpMode Heater Update,,VAR,Comfort/loads (logical)
+1405,CE cmd_Rix_SetFanSpeed 0,,VAR,Comfort/loads (logical)
+1406,CE Heater_Source Off,,VAR,Comfort/loads (logical)
+1408,CE ACSetpointHeatF Convert,,VAR,Comfort/loads (logical)
+1409,CE ACSetpointHeatC Convert,,VAR,Comfort/loads (logical)
+1410,CND ACSetpointHeatF Convert,,VAR,Comfort/loads (logical)
+1411,CND ACSetpointHeatC Convert,,VAR,Comfort/loads (logical)
+1412,CE cmd_Rix_SetTempTarget C,,VAR,Comfort/loads (logical)
+1417,CE cmd_Rix_SetFanSpeed Auto,,VAR,Comfort/loads (logical)
+1418,SC Climate Off,,VAR,Comfort/loads (logical)
+1419,SC Climate Controls,,VAR,Comfort/loads (logical)
+1421,SC Magic Climate,,VAR,Comfort/loads (logical)
+1423,SC Heater Active,,VAR,Comfort/loads (logical)
+1424,CE ACSetpointCoolC Convert,,VAR,Comfort/loads (logical)
+1425,CE ACSetpointCoolF Convert,,VAR,Comfort/loads (logical)
+1426,CND ACSetpointCoolF Convert,,VAR,Comfort/loads (logical)
+1427,CND ACSetpointCoolC Convert,,VAR,Comfort/loads (logical)
+1430,CE Temp_HeaterFanSpeed Low,,VAR,Comfort/loads (logical)
+1431,CE Temp_HeaterFanSpeed Med,,VAR,Comfort/loads (logical)
+1432,CE Temp_HeaterFanSpeed High,,VAR,Comfort/loads (logical)
+1433,CE Temp_HeaterFanSpeed Auto,,VAR,Comfort/loads (logical)
+1434,Heater_FanSpeed_UserUpdate,,VAR,Comfort/loads (logical)
+1435,CND Heater_FanSpeed_UserUpdate,,VAR,Comfort/loads (logical)
+1436,CE cmd_Rix_SetFanSpeed User,,VAR,Comfort/loads (logical)
+1437,Calculate Ambient Temp,,VAR,Comfort/loads (logical)
+1438,TR Bath ON,,VAR,Comfort/loads (logical)
+1439,TR Bath ON EXT,,VAR,Comfort/loads (logical)
+1440,TR Bath OFF,,VAR,Comfort/loads (logical)
+1445,Fuel Pump Prime Send,,VAR,Comfort/loads (logical)
+1449,Send Hot Water Off,,VAR,Comfort/loads (logical)
+1450,CE cmd_Rix_ToggleHotWater Inactive,,VAR,Comfort/loads (logical)
+1451,CND Send Hot Water Off,,VAR,Comfort/loads (logical)
+1452,Hot Water Off Check,,VAR,Comfort/loads (logical)
+1453,CE GalleyFan_MinSpeed Inc,,VAR,Comfort/loads (logical)
+1454,CE GalleyFan_MinSpeed DEC,,VAR,Comfort/loads (logical)
+1456,CE ACSetpointCoolC INC Condition,,VAR,Comfort/loads (logical)
+1457,CE ACSetpointCoolF INC Condition,,VAR,Comfort/loads (logical)
+1458,CE ACSetpointHeatC INC Condition,,VAR,Comfort/loads (logical)
+1459,CE ACSetpointHeatF INC Condition,,VAR,Comfort/loads (logical)
+1460,CE ACSetpointCoolC Dec Condition,,VAR,Comfort/loads (logical)
+1461,CE ACSetpointHeatC Dec Condition,,VAR,Comfort/loads (logical)
+1462,CE ACSetpointCoolF Dec Condition,,VAR,Comfort/loads (logical)
+1463,CE ACSetpointHeatF Dec Condition,,VAR,Comfort/loads (logical)
+1464,CE ACSetpointHeatC Auto,,VAR,Comfort/loads (logical)
+1471,CE cmd_Rix_ToggleHotWater Active,,VAR,Comfort/loads (logical)
+1472,CE cmd_Rix_SetTempTarget Magic,,VAR,Comfort/loads (logical)
+1473,CE TxACFanSpeed Heat,,VAR,Comfort/loads (logical)
+1474,UE Heat Fan Auto,,VAR,Comfort/loads (logical)
+1477,CNDHeater_Source Fuel,,VAR,Comfort/loads (logical)
+1478,CE cmd_Rix_SetTempTarget Heat Off,,VAR,Comfort/loads (logical)
+1479,Furnace Off Commands,,VAR,Comfort/loads (logical)
+1480,CND Heater_Source Off,,VAR,Comfort/loads (logical)
+1485,CE CargoLightsBrightness Schmode,,VAR,Comfort/loads (logical)
+1486,CE AwningLightBrightness Schmode,,VAR,Comfort/loads (logical)
+1487,CE ReadingLightBrightness Schmode,,VAR,Comfort/loads (logical)
+1488,CE CabinLightBrightness Schmode,,VAR,Comfort/loads (logical)
+1489,UE SaveBathBrightness,,VAR,Comfort/loads (logical)
+1490,CE BathBrightnessDisplay Reveal,,VAR,Comfort/loads (logical)
+1491,UE BathLightBrightness_Changed,,VAR,Comfort/loads (logical)
+1492,CE BathLightBrightness EXT,,VAR,Comfort/loads (logical)
+1493,CE BathLightBrightness Preset,,VAR,Comfort/loads (logical)
+1494,CE BathLightBrightness Full,,VAR,Comfort/loads (logical)
+1495,CE BathLightBrightness Master,,VAR,Comfort/loads (logical)
+1496,CE BathLightBrightness Schmode,,VAR,Comfort/loads (logical)
+1500,CE MasterBrightness Schmode,,VAR,Comfort/loads (logical)
+1501,CND PDM1.DO6.RecircPump_BathLight Brightness,,OUTPUT,Comfort/loads (logical)
+1502,CND PDM1.DO6.RecircPump.Off,,OUTPUT,Comfort/loads (logical)
+1503,Bath Return,,VAR,Comfort/loads (logical)
+1504,TRC Bath OFF,,VAR,Comfort/loads (logical)
+1505,TR 500ms Delay Bath,,VAR,Comfort/loads (logical)
+1506,TRC Bath ON EXT,,VAR,Comfort/loads (logical)
+1510,Sink Pump On,,VAR,Comfort/loads (logical)
+1511,Sink Pump Max,,VAR,Comfort/loads (logical)
+1512,Sink Pump Ramp,,VAR,Comfort/loads (logical)
+1513,CE Sink Pump Max,,VAR,Comfort/loads (logical)
+1514,CND Sink Pump On,,VAR,Comfort/loads (logical)
+1515,Sink Pump Off,,VAR,Comfort/loads (logical)
+1516,CND Sink Pump Off,,VAR,Comfort/loads (logical)
+1517,Sink Pump Toggle,,VAR,Comfort/loads (logical)
+1519,Aux1 On,,VAR,Comfort/loads (logical)
+1520,Aux1 Off,,VAR,Comfort/loads (logical)
+1521,Aux1 Max,,VAR,Comfort/loads (logical)
+1522,Aux1 Ramp,,VAR,Comfort/loads (logical)
+1524,CND Aux1 Max,,VAR,Comfort/loads (logical)
+1525,CND Aux1 Off,,VAR,Comfort/loads (logical)
+1526,CND Aux1 On,,VAR,Comfort/loads (logical)
+1527,Aux1 Toggle,,VAR,Comfort/loads (logical)
+1528,CND BathLightBrightness Preset,,VAR,Comfort/loads (logical)
+1529,SCE ActivePreset Load,,VAR,Comfort/loads (logical)
+34330,Radio.Preset,,VAR,Comfort/loads (logical)
+34341,Radio.PresetLine1,,VAR,Comfort/loads (logical)
+34342,Radio.PresetLine2,,VAR,Comfort/loads (logical)
+34343,Radio.PresetLine3,,VAR,Comfort/loads (logical)
+34344,Radio.PresetLine4,,VAR,Comfort/loads (logical)
+34345,Radio.PresetLine5,,VAR,Comfort/loads (logical)
+34346,Radio.PresetLine6,,VAR,Comfort/loads (logical)
+34347,Radio.PresetLine7,,VAR,Comfort/loads (logical)
+34348,Radio.PresetLine8,,VAR,Comfort/loads (logical)
+34349,Radio.PresetLine9,,VAR,Comfort/loads (logical)
+34350,Radio.PresetLine10,,VAR,Comfort/loads (logical)
+34351,Radio.PresetLine11,,VAR,Comfort/loads (logical)
+34352,Radio.PresetLine12,,VAR,Comfort/loads (logical)
+34353,Radio.PresetLine13,,VAR,Comfort/loads (logical)
+34354,Radio.PresetLine14,,VAR,Comfort/loads (logical)
+34355,Radio.PresetLine15,,VAR,Comfort/loads (logical)
+34356,Radio.PresetLine16,,VAR,Comfort/loads (logical)
+34357,Radio.PresetLine17,,VAR,Comfort/loads (logical)
+34358,Radio.PresetLine18,,VAR,Comfort/loads (logical)
+2,Dm1.IsActive,,VAR,Faults DM1
+3,Dm1.LampStatus,,VAR,Faults DM1
+5,Dm1.ListPointer,,VAR,Faults DM1
+7,Dm1.OccuranceCount,,VAR,Faults DM1
+9,Dm1.PlugId,,VAR,Faults DM1
+11,Dm1.SourceAddress,,VAR,Faults DM1
+13,Dm1.SPN,,VAR,Faults DM1
+16,Dm1.TotalFaultsInList,,VAR,Faults DM1
+28,Dm1.LogSize,,VAR,Faults DM1
+45,Dm1.Acknowledged,,VAR,Faults DM1
+47,Dm1.CurrentLampStatus,,VAR,Faults DM1
+70,Dm1.FMI,,VAR,Faults DM1
+101,Dm1.InternalPort,,VAR,Faults DM1
+102,Dm1.InternalSourceAddress,,VAR,Faults DM1
+103,Dm1.InternalSPN,,VAR,Faults DM1
+104,Dm1.InternalFMI,,VAR,Faults DM1
+105,Dm1.InternalLampStatus,,VAR,Faults DM1
+124,Dm1.ListPositionPercentStart,,VAR,Faults DM1
+125,Dm1.ListPositionPercentEnd,,VAR,Faults DM1
+126,DM1.SelectedRow,,VAR,Faults DM1
+151,Dm13.Status,,VAR,Faults DM1
+162,Dm1.LampStatusForBroadcast,,VAR,Faults DM1
+884,Dm1.CurrentAcknowledged,,VAR,Faults DM1
+886,Dm1.VariablesWriteFail,,VAR,Faults DM1
+893,Dm1.VariablesWriteOk,,VAR,Faults DM1
+895,Dm1.NewActiveFaultAvailable,,VAR,Faults DM1
+896,Dm1.TransferError,,VAR,Faults DM1
+897,Dm1.NoActiveFaults,,VAR,Faults DM1
+898,Dm1.TransferCompleted,,VAR,Faults DM1
+899,Dm1.AllAcknowledged,,VAR,Faults DM1
+910,Dm1.DtcBroadcasted,,VAR,Faults DM1
+1347,DM1_AckAll,,VAR,Faults DM1
+1348,DM1_AckCurrent,,VAR,Faults DM1
+34250,DM1.Header.Source,,VAR,Faults DM1
+34251,DM1.Header.Description,,VAR,Faults DM1
+34252,DM1.Header.Correction,,VAR,Faults DM1
+34256,DM1.Header.Plug,,VAR,Faults DM1
+34257,DM1.Header.SPN,,VAR,Faults DM1
+34258,DM1.Header.FMI,,VAR,Faults DM1
+34259,DM1.Header.Count,,VAR,Faults DM1
+34359,DM1.Table.Source.1,,VAR,Faults DM1
+34360,DM1.Table.Plug.1,,VAR,Faults DM1
+34361,DM1.Table.SPN.1,,VAR,Faults DM1
+34362,DM1.Table.FMI.1,,VAR,Faults DM1
+34363,DM1.Table.Count.1,,VAR,Faults DM1
+34364,DM1.Table.Description.1,,VAR,Faults DM1
+34365,DM1.Table.Source.2,,VAR,Faults DM1
+34366,DM1.Table.Plug.2,,VAR,Faults DM1
+34367,DM1.Table.SPN.2,,VAR,Faults DM1
+34368,DM1.Table.FMI.2,,VAR,Faults DM1
+34369,DM1.Table.Count.2,,VAR,Faults DM1
+34370,DM1.Table.Description.2,,VAR,Faults DM1
+34371,DM1.Table.Source.3,,VAR,Faults DM1
+34372,DM1.Table.Plug.3,,VAR,Faults DM1
+34373,DM1.Table.SPN.3,,VAR,Faults DM1
+34374,DM1.Table.FMI.3,,VAR,Faults DM1
+34375,DM1.Table.Count.3,,VAR,Faults DM1
+34376,DM1.Table.Description.3,,VAR,Faults DM1
+34377,DM1.Table.Source.4,,VAR,Faults DM1
+34378,DM1.Table.Plug.4,,VAR,Faults DM1
+34379,DM1.Table.SPN.4,,VAR,Faults DM1
+34380,DM1.Table.FMI.4,,VAR,Faults DM1
+34381,DM1.Table.Count.4,,VAR,Faults DM1
+34382,DM1.Table.Description.4,,VAR,Faults DM1
+34383,DM1.Table.Source.5,,VAR,Faults DM1
+34384,DM1.Table.Plug.5,,VAR,Faults DM1
+34385,DM1.Table.SPN.5,,VAR,Faults DM1
+34386,DM1.Table.FMI.5,,VAR,Faults DM1
+34387,DM1.Table.Count.5,,VAR,Faults DM1
+34388,DM1.Table.Description.5,,VAR,Faults DM1
+34389,DM1.Table.Source.6,,VAR,Faults DM1
+34390,DM1.Table.Plug.6,,VAR,Faults DM1
+34391,DM1.Table.SPN.6,,VAR,Faults DM1
+34392,DM1.Table.FMI.6,,VAR,Faults DM1
+34393,DM1.Table.Count.6,,VAR,Faults DM1
+34394,DM1.Table.Description.6,,VAR,Faults DM1
+34395,DM1.Table.Source.7,,VAR,Faults DM1
+34396,DM1.Table.Plug.7,,VAR,Faults DM1
+34397,DM1.Table.SPN.7,,VAR,Faults DM1
+34398,DM1.Table.FMI.7,,VAR,Faults DM1
+34399,DM1.Table.Count.7,,VAR,Faults DM1
+34400,DM1.Table.Description.7,,VAR,Faults DM1
+34401,DM1.Table.Source.8,,VAR,Faults DM1
+34402,DM1.Table.Plug.8,,VAR,Faults DM1
+34403,DM1.Table.SPN.8,,VAR,Faults DM1
+34404,DM1.Table.FMI.8,,VAR,Faults DM1
+34405,DM1.Table.Count.8,,VAR,Faults DM1
+34406,DM1.Table.Description.8,,VAR,Faults DM1
+34407,DM1.Table.Source.9,,VAR,Faults DM1
+34408,DM1.Table.Plug.9,,VAR,Faults DM1
+34409,DM1.Table.SPN.9,,VAR,Faults DM1
+34410,DM1.Table.FMI.9,,VAR,Faults DM1
+34411,DM1.Table.Count.9,,VAR,Faults DM1
+34412,DM1.Table.Description.9,,VAR,Faults DM1
+34413,DM1.Table.Source.10,,VAR,Faults DM1
+34414,DM1.Table.Plug.10,,VAR,Faults DM1
+34415,DM1.Table.SPN.10,,VAR,Faults DM1
+34416,DM1.Table.FMI.10,,VAR,Faults DM1
+34417,DM1.Table.Count.10,,VAR,Faults DM1
+34418,DM1.Table.Description.10,,VAR,Faults DM1
+92,Dm2.FMI,,VAR,Faults DM2
+93,Dm2.LampStatus,,VAR,Faults DM2
+94,Dm2.ListPointer,,VAR,Faults DM2
+95,Dm2.OccuranceCount,,VAR,Faults DM2
+96,Dm2.PlugId,,VAR,Faults DM2
+97,Dm2.SourceAddress,,VAR,Faults DM2
+98,Dm2.SPN,,VAR,Faults DM2
+99,Dm2.TotalFaultsInList,,VAR,Faults DM2
+127,Dm2.ListPositionPercentStart,,VAR,Faults DM2
+128,Dm2.ListPositionPercentEnd,,VAR,Faults DM2
+129,DM2.SelectedRow,,VAR,Faults DM2
+130,DM2.Header.Status,,VAR,Faults DM2
+131,DM2.Popup.Status,,VAR,Faults DM2
+132,DM2.Popup.Showing,,VAR,Faults DM2
+902,Dm2.VariablesWriteOk,,VAR,Faults DM2
+903,Dm2.VariablesWriteFail,,VAR,Faults DM2
+904,Dm2.Receiving,,VAR,Faults DM2
+34253,DM2.Header.Source,,VAR,Faults DM2
+34254,DM2.Header.Description,,VAR,Faults DM2
+34255,DM2.Header.Correction,,VAR,Faults DM2
+34260,DM2.Header.Plug,,VAR,Faults DM2
+34261,DM2.Header.SPN,,VAR,Faults DM2
+34262,DM2.Header.FMI,,VAR,Faults DM2
+34263,DM2.Header.Count,,VAR,Faults DM2
+34419,DM2.Table.Source.1,,VAR,Faults DM2
+34420,DM2.Table.Plug.1,,VAR,Faults DM2
+34421,DM2.Table.SPN.1,,VAR,Faults DM2
+34422,DM2.Table.FMI.1,,VAR,Faults DM2
+34423,DM2.Table.Count.1,,VAR,Faults DM2
+34424,DM2.Table.Description.1,,VAR,Faults DM2
+34425,DM2.Table.Source.2,,VAR,Faults DM2
+34426,DM2.Table.Plug.2,,VAR,Faults DM2
+34427,DM2.Table.SPN.2,,VAR,Faults DM2
+34428,DM2.Table.FMI.2,,VAR,Faults DM2
+34429,DM2.Table.Count.2,,VAR,Faults DM2
+34430,DM2.Table.Description.2,,VAR,Faults DM2
+34431,DM2.Table.Source.3,,VAR,Faults DM2
+34432,DM2.Table.Plug.3,,VAR,Faults DM2
+34433,DM2.Table.SPN.3,,VAR,Faults DM2
+34434,DM2.Table.FMI.3,,VAR,Faults DM2
+34435,DM2.Table.Count.3,,VAR,Faults DM2
+34436,DM2.Table.Description.3,,VAR,Faults DM2
+34437,DM2.Table.Source.4,,VAR,Faults DM2
+34438,DM2.Table.Plug.4,,VAR,Faults DM2
+34439,DM2.Table.SPN.4,,VAR,Faults DM2
+34440,DM2.Table.FMI.4,,VAR,Faults DM2
+34441,DM2.Table.Count.4,,VAR,Faults DM2
+34442,DM2.Table.Description.4,,VAR,Faults DM2
+34443,DM2.Table.Source.5,,VAR,Faults DM2
+34444,DM2.Table.Plug.5,,VAR,Faults DM2
+34445,DM2.Table.SPN.5,,VAR,Faults DM2
+34446,DM2.Table.FMI.5,,VAR,Faults DM2
+34447,DM2.Table.Count.5,,VAR,Faults DM2
+34448,DM2.Table.Description.5,,VAR,Faults DM2
+34449,DM2.Table.Source.6,,VAR,Faults DM2
+34450,DM2.Table.Plug.6,,VAR,Faults DM2
+34451,DM2.Table.SPN.6,,VAR,Faults DM2
+34452,DM2.Table.FMI.6,,VAR,Faults DM2
+34453,DM2.Table.Count.6,,VAR,Faults DM2
+34454,DM2.Table.Description.6,,VAR,Faults DM2
+34455,DM2.Table.Source.7,,VAR,Faults DM2
+34456,DM2.Table.Plug.7,,VAR,Faults DM2
+34457,DM2.Table.SPN.7,,VAR,Faults DM2
+34458,DM2.Table.FMI.7,,VAR,Faults DM2
+34459,DM2.Table.Count.7,,VAR,Faults DM2
+34460,DM2.Table.Description.7,,VAR,Faults DM2
+34461,DM2.Table.Source.8,,VAR,Faults DM2
+34462,DM2.Table.Plug.8,,VAR,Faults DM2
+34463,DM2.Table.SPN.8,,VAR,Faults DM2
+34464,DM2.Table.FMI.8,,VAR,Faults DM2
+34465,DM2.Table.Count.8,,VAR,Faults DM2
+34466,DM2.Table.Description.8,,VAR,Faults DM2
+34467,DM2.Table.Source.9,,VAR,Faults DM2
+34468,DM2.Table.Plug.9,,VAR,Faults DM2
+34469,DM2.Table.SPN.9,,VAR,Faults DM2
+34470,DM2.Table.FMI.9,,VAR,Faults DM2
+34471,DM2.Table.Count.9,,VAR,Faults DM2
+34472,DM2.Table.Description.9,,VAR,Faults DM2
+34473,DM2.Table.Source.10,,VAR,Faults DM2
+34474,DM2.Table.Plug.10,,VAR,Faults DM2
+34475,DM2.Table.SPN.10,,VAR,Faults DM2
+34476,DM2.Table.FMI.10,,VAR,Faults DM2
+34477,DM2.Table.Count.10,,VAR,Faults DM2
+34478,DM2.Table.Description.10,,VAR,Faults DM2
+1065,rix_Status_AmbTemp,C,VAR,Hydronic heater (Rixen)
+1066,rix_Status_TempTarget,C,VAR,Hydronic heater (Rixen)
+1067,rix_Status_AirPress,hPa,VAR,Hydronic heater (Rixen)
+1068,rix_Status_FanStatus,,VAR,Hydronic heater (Rixen)
+1069,rix_Status_Heat,,VAR,Hydronic heater (Rixen)
+1070,rix_Status_Pump,,VAR,Hydronic heater (Rixen)
+1071,rix_Status_Furnace,,VAR,Hydronic heater (Rixen)
+1072,rix_Status_Electric,,VAR,Hydronic heater (Rixen)
+1073,rix_Status_Engine,,VAR,Hydronic heater (Rixen)
+1074,rix_Status_HotWater,,VAR,Hydronic heater (Rixen)
+1075,rix_Status_Preheat,,VAR,Hydronic heater (Rixen)
+1076,rix_Status_RelativeHumidity,%,VAR,Hydronic heater (Rixen)
+1084,rix_Fault_HeaterAF,,VAR,Hydronic heater (Rixen)
+1085,rix_Fault_HeaterF1,,VAR,Hydronic heater (Rixen)
+1086,rix_Diag2_InletTemp,C,VAR,Hydronic heater (Rixen)
+1087,rix_Diag2_OutletTemp,C,VAR,Hydronic heater (Rixen)
+1088,rix_Diag2_FlameSensor,,VAR,Hydronic heater (Rixen)
+1089,rix_Diag2_Voltage,V,VAR,Hydronic heater (Rixen)
+1090,rix_Diag_HeaterFuel,,VAR,Hydronic heater (Rixen)
+1091,rix_Diag_HeaterRuntime,min,VAR,Hydronic heater (Rixen)
+1092,rix_Diag_HeaterFan,,VAR,Hydronic heater (Rixen)
+1093,rix_Diag_HeaterGlow,,VAR,Hydronic heater (Rixen)
+1138,Rixen_Debug,,VAR,Hydronic heater (Rixen)
+1140,rix_FurnaceOverride,,VAR,Hydronic heater (Rixen)
+1149,Rixen Set TempTarget (0x788),,VAR,Hydronic heater (Rixen)
+1152,Rixen Set FanSpeed (0x788),,VAR,Hydronic heater (Rixen)
+1155,Rixen Set Furnace (0x788),,VAR,Hydronic heater (Rixen)
+1158,Rixen Set Electric (0x788),,VAR,Hydronic heater (Rixen)
+1161,Rixen Set Engine (0x788),,VAR,Hydronic heater (Rixen)
+1164,Rixen Set Hot Water (0x788),,VAR,Hydronic heater (Rixen)
+1167,Rixen Set Preheat (0x788),,VAR,Hydronic heater (Rixen)
+1170,Rixen HC_Status (0x724),,VAR,Hydronic heater (Rixen)
+1173,Rixen HC_Fault (0x727),,VAR,Hydronic heater (Rixen)
+1176,Rixen HC_Diag2 (0x726),,VAR,Hydronic heater (Rixen)
+1179,Rixen HC_Diag (0x725),,VAR,Hydronic heater (Rixen)
+1182,Rixen HC_SetIO (0x789)_2,,VAR,Hydronic heater (Rixen)
+1198,Rixen Send Eng Run (0x788),,VAR,Hydronic heater (Rixen)
+1199,Rixen Send Amb Temp (0x788),,VAR,Hydronic heater (Rixen)
+1201,Rixen Send Prime Fuel Time (0x788),,VAR,Hydronic heater (Rixen)
+1507,Rixen Cascade Start,,VAR,Hydronic heater (Rixen)
+1508,Rixen Cascade End,,VAR,Hydronic heater (Rixen)
+1509,Rixen Delay Timer,,VAR,Hydronic heater (Rixen)
+975,Inverter_En_Request,,VAR,Inverter
+1038,Inverter_Popup_Status,,VAR,Inverter
+1186,Inverter_Instance,,VAR,Inverter
+1187,Inverter_Command,,VAR,Inverter
+1192,FFC_1FFD4_Inverter Status,,VAR,Inverter
+1193,LITH_Inverter_Status,,VAR,Inverter
+1213,TM_InverterAmpCheck,,VAR,Inverter
+1330,CE Inverter_Popup_Status Inactive,,VAR,Inverter
+1331,CE Inverter_Popup_Status Active,,VAR,Inverter
+1333,CE Inverter_En_Request Toggle,,VAR,Inverter
+1341,Inverter_Command,,VAR,Inverter
+1352,APE Inverter Button Command,,VAR,Inverter
+1414,CE Inverter_Command Disable,,VAR,Inverter
+1415,CE Inverter_Command Enable,,VAR,Inverter
+1468,Inverter Amp Check,,VAR,Inverter
+1469,CND Inverter Amp Check,,VAR,Inverter
+1470,Inverter Check Timer,,VAR,Inverter
+536,PDM1.DO10.ExhaustFan,,OUTPUT,PDM1
+537,PDM1.DO10.ExhaustFan.DiagBits,,DIAG,PDM1
+547,PDM1.DI12.AwningOutSwitch,,SWITCH,PDM1
+552,PDM1.DO1.SolarBattBackup,,OUTPUT,PDM1
+553,PDM1.DO2.CargoLights,,OUTPUT,PDM1
+554,PDM1.DO2.CargoLights.Diagbits,,DIAG,PDM1
+555,PDM1.DO3.ReadingLights,,OUTPUT,PDM1
+556,PDM1.DO3.ReadingLights.Diagbits,,DIAG,PDM1
+557,PDM1.DO4.Cabinlights,,OUTPUT,PDM1
+558,PDM1.DO4.Cabinlights.Diagbits,,DIAG,PDM1
+559,PDM1.DO5.AwningLights,,OUTPUT,PDM1
+560,PDM1.DO5.AwningLights.DiagBits,,DIAG,PDM1
+561,PDM1.DO6.RecircPump_BathLight,,OUTPUT,PDM1
+562,PDM1.DO6.RecircPump.Diagbits,,DIAG,PDM1
+563,PDM1.DI11.AwningInSwitch,,SWITCH,PDM1
+577,PDM1.DI3.CargoLightsSwitch,,SWITCH,PDM1
+578,PDM1.DI4.CabinLightSwitch,,SWITCH,PDM1
+579,PDM1.DI5.AwningLightSwitch,,SWITCH,PDM1
+580,PDM1.DI6.RecircPump_BathLight_Switch,,SWITCH,PDM1
+590,PDM1.DO11.FurnacePower,,OUTPUT,PDM1
+591,PDM1.DO11.FurnacePower.DB,,OUTPUT,PDM1
+592,PDM1.DO12.WaterPump,,OUTPUT,PDM1
+593,PDM1.DO12.WaterPump.DB,,OUTPUT,PDM1
+635,PDM1.DI7.AwningEnable,,SWITCH,PDM1
+636,PDM1.DI8.EngineRunning,,SWITCH,PDM1
+637,PDM1.DO7.AwningEnabled,,OUTPUT,PDM1
+642,PDM1.Status,,VAR,PDM1
+643,PDM1.SoftwareVersion,,VAR,PDM1
+644,PDM1.BatteryVoltage,,VAR,PDM1
+694,PDM1.AI4.ElectricalCabTemp,V,SENSOR,PDM1
+714,PDM1.DO1SolarBackup.DiagnosticBits,,DIAG,PDM1
+715,PDM1.DO7AwningEnabled.DiagnosticBits,,DIAG,PDM1
+776,PDM1.DO01_SolarBackup.Feedback,A,OUTPUT,PDM1
+777,PDM1.DO02_CargoLights.Feedback,A,OUTPUT,PDM1
+778,PDM1.DO03_ReadingLights.Feedback,A,OUTPUT,PDM1
+779,PDM1.DO04_CabinLights.Feedback,A,OUTPUT,PDM1
+780,PDM1.DO05_AwningLights.Feedback,A,OUTPUT,PDM1
+781,PDM1.DO06_RecircPump.Feedback,A,OUTPUT,PDM1
+782,PDM1.DO07_AwningEnabled.Feedback,A,OUTPUT,PDM1
+785,PDM1.DO10_ExhaustFan.Feedback,A,OUTPUT,PDM1
+786,PDM1.DO11_FurnacePower.Feedback,A,OUTPUT,PDM1
+787,PDM1.DO12_WaterPump.Feedback,A,OUTPUT,PDM1
+1017,PDM1.DO10.ExhaustFan.Off,,OUTPUT,PDM1
+1018,PDM1.DO10.ExhaustFan.On,,OUTPUT,PDM1
+1021,PDM1.Output01.Off,,VAR,PDM1
+1022,PDM1.Output01.On,,VAR,PDM1
+1023,PDM1.DO2.CargoLights.Off,,OUTPUT,PDM1
+1024,PDM1.DO2.CargoLights.On,,OUTPUT,PDM1
+1025,PDM1.DO3.ReadingLights.Off,,OUTPUT,PDM1
+1026,PDM1.DO3.ReadingLights.On,,OUTPUT,PDM1
+1027,PDM1.DO4.Cabinlights.Off,,OUTPUT,PDM1
+1028,PDM1.DO4.Cabinlights.On,,OUTPUT,PDM1
+1029,PDM1.DO5.AwningLights.Off,,OUTPUT,PDM1
+1030,PDM1.DO5.AwningLights.On,,OUTPUT,PDM1
+1031,PDM1.DO6.RecircPump.Off,,OUTPUT,PDM1
+1032,PDM1.DO6.RecircPump.On,,OUTPUT,PDM1
+1035,CE PDM1.DO4.Cabinlights.Brightness,,OUTPUT,PDM1
+1036,CE PDM1.DO4.Cabinlights.Off Condtion,,OUTPUT,PDM1
+1038,CE PDM1.DO4.Cabinlights.Brightness Condition,,OUTPUT,PDM1
+1040,CE PDM1.DO3.ReadingLights Brightness,,OUTPUT,PDM1
+1041,PDM1.DO3.ReadingLights.Off Condition,,OUTPUT,PDM1
+1042,CE PDM1.DO3.ReadingLights Brightness Condition,,OUTPUT,PDM1
+1043,PDM1.DO2.CargoLights Brightness,,OUTPUT,PDM1
+1045,PDM1.DO2.CargoLights Brightness Condition,,OUTPUT,PDM1
+1046,PDM1.DO2.CargoLights.Off Condition,,OUTPUT,PDM1
+1047,PDM1.DO5.AwningLights Calculation Brightness,,OUTPUT,PDM1
+1048,PDM1.DO5.AwningLights  Brightness Condition,,OUTPUT,PDM1
+1049,PDM1.DO5.AwningLights.Off Condition,,OUTPUT,PDM1
+1061,PDM1.DO11.FurnacePower.Off,,OUTPUT,PDM1
+1062,PDM1.DO11.FurnacePower.On,,OUTPUT,PDM1
+1064,PDM1.DO12.WaterPump.Off,,OUTPUT,PDM1
+1065,PDM1.DO12.WaterPump.On,,OUTPUT,PDM1
+1101,PDM1.DO7.AwningEnabled.Off,,OUTPUT,PDM1
+1102,PDM1.DO7.AwningEnabled.On,,OUTPUT,PDM1
+1110,CE PDM1.DO12.WaterPump Toggle,,OUTPUT,PDM1
+1151,CE PDM1.DO5.AwningLights Brightness Changed,,OUTPUT,PDM1
+1152,CE PDM1.DO3.ReadingLights Brightness Changed,,OUTPUT,PDM1
+1155,CE PDM1.DO2.CargoLights Brightness Changed,,OUTPUT,PDM1
+1157,CE PDM1.DO4.Cabinlights Brightness Changed,,OUTPUT,PDM1
+1214,CE PDM1.DO4.Cabinlights Preset,,OUTPUT,PDM1
+1215,CE PDM1.DO2.CargoLights Preset,,OUTPUT,PDM1
+1216,CE PDM1.DO5.AwningLights Preset,,OUTPUT,PDM1
+1217,CE PDM1.DO3.ReadingLights Preset,,OUTPUT,PDM1
+1497,CE PDM1.DO6.RecircPump_BathLight Brightness,,OUTPUT,PDM1
+1498,CE PDM1.DO6.RecircPump_BathLight Brightness Changed,,OUTPUT,PDM1
+1499,CE PDM1.DO6.RecircPump_BathLight Preset,,OUTPUT,PDM1
+520,PDM2.DI5.WaterPump,,SWITCH,PDM2
+521,PDM2.DO11.SinkPump,%,OUTPUT,PDM2
+522,PDM2.DO11.SinkPump.DiagBit,,DIAG,PDM2
+523,PDM2.DO7.TankMonitorPWR,,OUTPUT,PDM2
+525,PDM2.DO7.TankMonitorPWR.DiagBit,,DIAG,PDM2
+526,PDM2.DO8.SwitchPower,,OUTPUT,PDM2
+527,PDM2.DO8.SwitchPower.DiagBits,,DIAG,PDM2
+528,PDM2.DO9.ACGatewayPower,,OUTPUT,PDM2
+529,PDM2.DO9.ACGatewayPower.DiagBits,,DIAG,PDM2
+530,PDM2.DO10.12VSpeaker,,OUTPUT,PDM2
+531,PDM2.DO10.12VSpeaker.DiagBits,,DIAG,PDM2
+534,PDM2.DO3.Refrigerator,,OUTPUT,PDM2
+535,PDM2.DO3.Refrigerator.DiagBits,,DIAG,PDM2
+538,PDM2.DI9.SinkSwitch,,SWITCH,PDM2
+539,PDM2.DO12.Aux1Switch,%,OUTPUT,PDM2
+540,PDM2.DI4.Aux1Switch,,SWITCH,PDM2
+541,PDM2.DO12.Aux1Switch.DiagBits,,DIAG,PDM2
+545,PDM2.DI6.MasterLightSwitch,,SWITCH,PDM2
+546,PDM2.DI7.FurnaceTrigger,,SWITCH,PDM2
+692,PDM2.DO5 AwningMotor,,OUTPUT,PDM2
+693,PDM2.DO4.12V/USB,,OUTPUT,PDM2
+718,PDM2.DO412VUSB.DiagBits,,DIAG,PDM2
+719,PDM2.DO5AwningMotor.DiagBits,,DIAG,PDM2
+790,PDM2.DO03_Refrigerator.Feedback,A,OUTPUT,PDM2
+791,PDM2.DO04_12V_USB.Feedback,A,OUTPUT,PDM2
+792,PDM2.DO05_AwningMotor.Feedback,A,OUTPUT,PDM2
+793,PDM2.DO07_TankMonitorPWR.Feedback,A,OUTPUT,PDM2
+794,PDM2.DO08_SwitchPower.Feedback,A,OUTPUT,PDM2
+795,PDM2.DO09_ACGatewayPWR.Feedback,A,OUTPUT,PDM2
+796,PDM2.DO10_12VSpeaker.Feedback,A,OUTPUT,PDM2
+797,PDM2.DO11_SinkPump.Feedback,A,OUTPUT,PDM2
+798,PDM2.DO12_Aux1Switch.Feedback,A,OUTPUT,PDM2
+1004,PDM2.Output11.Off,,VAR,PDM2
+1005,PDM2.DO11.SinkPump.On,,OUTPUT,PDM2
+1006,PDM2.DO7.TankMonitorPWR.Off,,OUTPUT,PDM2
+1007,PDM2.DO7.TankMonitorPWR.On,,OUTPUT,PDM2
+1008,PDM2.DO8.SwitchPower.Off,,OUTPUT,PDM2
+1009,PDM2.DO8.SwitchPower.On,,OUTPUT,PDM2
+1010,PDM2.DO9.ACGatewayPower.Off,,OUTPUT,PDM2
+1011,PDM2.DO9.ACGatewayPower.On,,OUTPUT,PDM2
+1012,PDM2.DO10.12VSpeaker.Off,,OUTPUT,PDM2
+1013,PDM2.DO10.12VSpeaker.On,,OUTPUT,PDM2
+1014,PDM2.DO3.Refrigerator.Off,,OUTPUT,PDM2
+1015,PDM2.DO3.Refrigerator.On,,OUTPUT,PDM2
+1019,PDM2.Output12.Off,,VAR,PDM2
+1020,PDM2.DO12.Aux.Toggle,,OUTPUT,PDM2
+1063,CE PDM2.DO12.Aux1,,OUTPUT,PDM2
+1207,PDM2.Output05.Off,,VAR,PDM2
+1208,PDM2.DO2.GalleyFanSpeed,,OUTPUT,PDM2
+1208,PDM2.Output05.Forward,,VAR,PDM2
+1209,PDM2.DO2.GalleyFanSpeed.Feedback,A,OUTPUT,PDM2
+1209,PDM2.DO5 AwningMotor.Reverse,,OUTPUT,PDM2
+1210,PDM2.DO2.GalleyFanSpeed.DiagnosticBits,,DIAG,PDM2
+1210,PDM2.DO4.12V/USB Off,,OUTPUT,PDM2
+1211,PDM2.DO4.12V/USB On,,OUTPUT,PDM2
+1465,PDM2.DO2.GalleyFanSpeed Update,,OUTPUT,PDM2
+1466,PDM2.DO2.GalleyFanSpeed.Off,,OUTPUT,PDM2
+1467,PDM2.DO2.GalleyFanSpeed.On,,OUTPUT,PDM2
+1518,CE PDM2.DO11.SinkPump Ramp,,OUTPUT,PDM2
+1523,CE PDM2.DO12.Aux1 Ramp,,OUTPUT,PDM2

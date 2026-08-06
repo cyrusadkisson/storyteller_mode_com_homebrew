@@ -57,8 +57,10 @@ locally; do not commit or redistribute it.
 
 ## Status
 
-Early. Firmware unpacked and understood; connectivity path decided (CAN tap).
-Next: decode the signal dictionary into a human‑readable map, then choose gateway
-hardware.
+Early. Firmware unpacked and understood; connectivity path decided (CAN tap);
+**signal dictionary decoded** — 1758 signals, ~916 van-control relevant — see
+[`docs/signal-dictionary.md`](docs/signal-dictionary.md) and
+[`data/signals.control.csv`](data/signals.control.csv). Next: mine wire-level CAN
+mappings (`CANPro-manager`, `Configuration.bin`) and choose gateway hardware.
 
-[`DeviceInformationAll.pbuff`]: docs/architecture.md
+[`DeviceInformationAll.pbuff`]: docs/signal-dictionary.md

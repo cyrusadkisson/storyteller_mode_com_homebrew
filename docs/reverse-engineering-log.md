@@ -55,3 +55,23 @@ Goal: find a live channel from a computer/phone to the unit.
    USB-CAN) and locate a physical CAN-H/CAN-L tap point.
 4. Read-only sniff first; then carefully validate a single output before
    building the UI.
+
+## 2026-08-06 — Signal dictionary decoded
+
+- Parsed `DeviceInformationAll.pbuff` (protobuf, no schema) straight from the
+  wire format. Top-level has three repeated signal tables (fields #14/#15/#16);
+  each record is `id`(#1) + `name`(#2) + `unit`(#4, e.g. A/V/W/C/%/RPM/Hz).
+- **1758 signals**, ids 1–34478. ~916 are van-control/telemetry; the rest are
+  infotainment (Maps/Radio/Media/GoPro/Bluetooth) + system internals.
+- Mapped every PDM1/PDM2 output (loads), input (switches), `.Feedback` (per-load
+  amps) and `.DiagBits`; lighting/climate/water setpoints; Lithionics battery
+  telemetry + BMS warnings; and the Rixen heater — which **embeds raw CAN ids in
+  its names** (status `0x724`–`0x727`, commands `0x788`, IO `0x789`). Inverter
+  status references RV-C DGN `1FFD4` (so some RV-C framing coexists with CANPro).
+- Wrote `docs/signal-dictionary.md` (annotated map) and
+  `data/signals.control.csv` (machine-readable subset). Raw `.pbuff` stays
+  git-ignored; only our derived analysis is tracked.
+- Still missing: wire-level CAN PGN/byte mapping for the non-Rixen signals →
+  next mine `CANPro-manager`/`j1939`/`PDM-Manager`/`Configuration.bin`, then
+  confirm with a live capture (validate the rig on the known `0x724`/`0x788`
+  frames first).
