@@ -95,3 +95,37 @@ Goal: find a live channel from a computer/phone to the unit.
   main remaining gap for controlling loads.
 - Wrote `tools/parse_can_config.py`, `data/can_messages.csv`/`.json`,
   `docs/can-map.md`.
+
+## 2026-08-07 — PDM-Manager static analysis
+
+- `PDM-Manager` = stripped ARM/QNX C++. Established the control architecture:
+  device classes `PDM::PDM12V`/`PDM24V`/`PDMBase`, config objects
+  `conf::PdmOutput`/`PdmInput`/`PdmData`, control primitives `EnableOutput`/
+  `DisableOutput` (on/off), `SetPwmCommandMode` (dimming), `SetPositionCommandMode`.
+  Transport = QNX `MsgSend` to the `j1939` daemon (no direct J1939 imports).
+- **`0x53f80018` is NOT a CAN id** — it's an `in32`/`out32` MMIO register poke.
+  Corrected `can-map.md`.
+- The PDM command PGN/payload is **not** statically recoverable here: no hardcoded
+  PGN constant (checked movw/movt immediates, literal pools, .data.rel.ro), and
+  **no ARM disassembler available** (objdump lacks ARM; no capstone/llvm; offline).
+  Documented in `docs/pdm-control.md` with the decisive next step: a live CAN
+  capture (toggle each load, diff traffic; validate rig on Rixen 0x788 first),
+  or run Ghidra/Capstone on a connected machine.
+- Tooling gap to close for deeper static RE: install Capstone / use Ghidra.
+
+## 2026-08-07 — Hardware ID & CAN tap point (from back-panel photos)
+
+- Head unit positively ID'd: Enovation/Murphy **PowerView PV1100-TCL**
+  (6–36VDC), integrated by **JET Technologies** as the "12986-KIT" panel.
+- Pulled the PV1100 install manual (00-02-1020): Black Connector CAN1 = pins
+  5(Low)/6(High), CAN2 = 18/19, Battery=7, Ground=8. The round **M12 5-pin
+  A-coded jack is ETHERNET, not CAN** (so standard D-coded M12 Ethernet cables
+  won't fit; port may be dormant).
+- Physical wiring in this van: the two big 35-pin connectors are **empty**; CAN
+  comes through the smaller **"CONTROL PANEL"** connector. **CAN1 = green(CAN_L)
+  + yellow(CAN_H) twisted pair** (J1939 colors; meter-verify). Red/blue/black
+  connectors = power; "PUSH BUTTON" = input.
+- Tap plan documented in `docs/hardware-and-tap.md`: T-tap green/yellow →
+  CANable (termination off, listen-only), validate on Rixen 0x724/0x788, then
+  flip loads to finish the PDM map. Parts: CANable + T-taps + multimeter.
+- Photos kept local; `images/` git-ignored (GPS EXIF + interior).

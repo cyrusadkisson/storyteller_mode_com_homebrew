@@ -22,6 +22,17 @@ BinaryData/
 BootLogo/
 
 # ---------------------------------------------------------------------------
+# Private photos of the user's van/hardware (contain GPS EXIF + interior shots).
+# Findings are documented in docs/; the raw images stay local.
+# ---------------------------------------------------------------------------
+images/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.MACRO_FOCUS.jpg
+
+# ---------------------------------------------------------------------------
 # Tooling / local config
 # ---------------------------------------------------------------------------
 .claude/settings.local.json

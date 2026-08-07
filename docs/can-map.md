@@ -35,8 +35,9 @@ switch the lights, pumps, fans, fridge, etc. Those are **not** declared as
 messages here — `Configuration.bin` only references a handful of PDM *inputs*
 (DI3/DI4/DI5/DI6) by name. PDM output control is driven by J1939 logic inside the
 `app/PDM-Manager` binary instead. So to command lights/pumps we still need to
-reverse that (next step). Lead: both `PDM-Manager` and `CANPro-manager` contain
-the constant `0x53f80018` — check it against a live capture.
+reverse that — analysis is in [`pdm-control.md`](pdm-control.md).
+(Note: `0x53f80018`, seen in PDM-Manager, is a memory-mapped SoC register poke —
+`in32`/`out32` — **not** a CAN id; disregard the earlier lead.)
 
 ## CAN ports
 
@@ -120,7 +121,8 @@ addresses seen: `0x46` head unit, `0xE1` inverter/charger, `0x58` AC unit,
 ## Next steps
 
 1. **PDM output protocol** — reverse `app/PDM-Manager` (J1939) to learn how
-   lights/pumps/fans are commanded; validate `0x53f80018` on a live bus.
+   lights/pumps/fans are commanded; see [`pdm-control.md`](pdm-control.md)
+   (needs a live capture or an ARM disassembler to finish).
 2. **Per-signal names** — messages with many signals (BMS info ×26, vent ×13)
    have bit layouts but not individual names yet; resolve the signal-id → name
    linkage or infer from J1939/RV-C standards + the signal dictionary.

@@ -62,8 +62,11 @@ Early. Firmware unpacked and understood; connectivity path decided (CAN tap);
 [`data/signals.control.csv`](data/signals.control.csv)); **wire-level CAN map
 extracted** — 30 messages / 129 signals from `Configuration.bin`
 ([`docs/can-map.md`](docs/can-map.md),
-[`data/can_messages.csv`](data/can_messages.csv)). Next: reverse the PDM output
-protocol (`PDM-Manager`) so lights/pumps are controllable, then a live capture
-and gateway hardware.
+[`data/can_messages.csv`](data/can_messages.csv)); PDM output protocol reversed
+as far as static analysis allows ([`docs/pdm-control.md`](docs/pdm-control.md));
+**hardware ID'd (Murphy PowerView PV1100) and CAN tap point located**
+([`docs/hardware-and-tap.md`](docs/hardware-and-tap.md)) — the green/yellow pair
+in the "CONTROL PANEL" connector. Next: get a CANable adapter, capture the bus
+(validate on the known Rixen frames), and flip loads to finish the PDM map.
 
 [`DeviceInformationAll.pbuff`]: docs/signal-dictionary.md
