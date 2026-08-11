@@ -129,3 +129,84 @@ Goal: find a live channel from a computer/phone to the unit.
   CANable (termination off, listen-only), validate on Rixen 0x724/0x788, then
   flip loads to finish the PDM map. Parts: CANable + T-taps + multimeter.
 - Photos kept local; `images/` git-ignored (GPS EXIF + interior).
+
+## 2026-08-11 — FIRST LIVE CAPTURE — PDM protocol found
+
+Tapped CAN1 (pins 5/6, sleeved green/yellow) with the CANable, listen-only @
+250 kbps. Bus live and clean.
+
+**Rig validated.** Frames predicted from the firmware appeared verbatim:
+Rixen `0x724` status / `0x788` command (multiplexed on byte 0: `01 01`,
+`0C 03 26`, `06`, `03`, `02`), plus `0x725/726/728/78A`; holding tanks
+**PGN 1FFB7 SA AF**; A/C **PGN 1FFE2 / 1FF9C / FEA7 SA 58**; DM1 (`FECA`)
+from both AF and 58. `can-map.md` is confirmed against real wire data.
+
+**The PDM gap is closed (pending load confirmation).** Bus is dominated by
+**PGN EF00 (Proprietary A, PF=0xEF, PDU1 point-to-point)**, priority 5,
+between a master at **SA 0x11** and two slaves at **SA 0x1E / 0x1F** —
+the head unit and PDM1/PDM2.
+
+| CAN ID | SA → DA | Role |
+|---|---|---|
+| `14EF1E11` / `14EF1F11` | 0x11 → 0x1E/0x1F | **command** (head unit → PDM) |
+| `14EF111E` / `14EF111F` | 0x1E/0x1F → 0x11 | status / feedback |
+
+Command frames carry only **two payloads each**, byte 0 = multiplexer
+(`FC`, `FD` — likely channels 1–6 and 7–12), bytes 1–6 = per-channel level,
+byte 7 = `FF` constant:
+
+```
+→ 0x1F:  FC 00 5C 7F 7F 00 00 FF   |  FD 7F 7F 7F 7F 00 00 FF
+→ 0x1E:  FC 7F 00 00 40 00 00 FF   |  FD 00 00 00 7F 7F 00 FF
+```
+
+Values observed: `00` (off), `7F` (full), `40` (~50%), `5C` (~72%) — i.e. a
+0–0x7F level, matching `EnableOutput` / `SetPwmCommandMode` in PDM-Manager.
+
+Status direction is richer, byte 0 multiplexed over `39/F0/F8/FA/FB/FC/FD/FE`,
+with `FC` sub-indexed on byte 1 (`F1`…`FC` = 12 items) — per-channel current
+feedback is the obvious candidate.
+
+Also present: `14E9111E` / `14E9111F` (DLC 4, `01 00 00 00`…`01 05 00 00`) —
+a 0–5 poll/scan cycle.
+
+Note: the head-unit SA seen here is **0x11**, not the 0x46 inferred from
+`Configuration.bin`. Different bus/role; do not assume 0x46 on CAN1.
+
+**Still to confirm:** which byte position corresponds to which physical load.
+That needs the OFF/ON capture-diff — static analysis cannot supply it.
+
+## 2026-08-11 — Inverter / branch-amps exhausted on CAN1
+
+Three power-system actions in one 15 s capture: inverter ON, branch-amps slider
+20 → 15 → 20, inverter OFF. Result on CAN1:
+
+- **zero new CAN ids** (same 18 as every other capture)
+- **zero PDM byte changes** — all four command frames flat throughout
+- exhaustive grep for `19FFD3` / `19FFD4` / `19FFCA` / `19FF95` / `18EF0046` /
+  `18FF8046`: nothing (earlier substring hits were payload bytes, not ids)
+
+Critically, **the inverter and branch-amps controls are on-screen buttons, not
+physical switches.** So the head unit necessarily transmitted something, and it
+was not on CAN1. Combined with the BMS/inverter/charger ids being defined in the
+firmware DB but never observed, the energy subsystem is on **CAN2**.
+
+### Tool fix: multiplexer auto-detection false positive
+
+`can_diff.py` split `0x724` (Rixen status) into phantom sub-messages `[5D]` and
+`[95]`, reporting one as "appeared" and the other as "disappeared". Byte 0 there
+is a *reading*, not a selector — but it had few distinct values, which was the
+whole heuristic.
+
+Fixed by adding the property that actually distinguishes them: **a real
+multiplexer cycles.** It revisits its values repeatedly as the sender rotates
+through sub-messages; a drifting data byte changes monotonically and rarely
+returns. Now requires `transitions >= 2 * distinct_values` **and**
+`revisits >= distinct_values`. Verified: `0x724` no longer splits, all genuine
+muxes still detected, and the cabin-light result reproduces unchanged.
+
+### Incidental
+
+`0x78A` bytes 2–3 mirror `0x724` bytes 0–1, and `0x788[0C]` byte 1 carries the
+same value as `0x19FF9C58` byte 1 (ambient from the A/C, relayed to the Rixen
+heater — matching `Rixen Send Amb Temp` in the DB).
