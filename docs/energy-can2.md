@@ -146,12 +146,50 @@ Changing the panel setting from 20 A to 15 A moved all three:
 | `0x19FF96E1` | 3 | `0x14` → `0x0F` |
 | `0x19FFC9E1` | 7 | `0x14` → `0x0F` |
 
-### Not yet decoded
+### The inverter and charger STATUS frames are stubs — do not rely on them
 
-`0x19FFC7E1` (charger status) reads almost entirely `FF` = *not available*, with
-byte 6 = `00` — consistent with a full pack and an idle charger, but untested
-under active charging. `0x19FFCAE1` byte 4 = `0x7D` = 125, unexplained.
-`0x19FFD4E1` (inverter status) byte 1 = `01`.
+Checked byte-by-byte across **four captures including a 20 A load event** (A/C
+compressor start, shore limit change). These five frames **never changed a
+single byte**:
+
+| frame | payload | nominal meaning |
+|---|---|---|
+| `0x19FFD4E1` | `01 01 FF FF FF FF FF FF` | inverter status |
+| `0x19FFC7E1` | `01 FF FF FF FF FF 00 FF` | charger status |
+| `0x19FFCAE1` | `01 00 00 00 7D 00 00 FF` | charger AC status 2 |
+| `0x18FECAE1` | `05 42 FF FF FF FF FF FF` | diagnostics |
+| `0x19FECAE1` | `05 42 FF FF FF FF FF FF` | diagnostics |
+
+They are broadcast at 2 Hz and are **almost entirely `FF`, which is RV-C's
+"not available"**. The device announces itself on these DGNs without populating
+them.
+
+> **Consequence for a companion app:** reading `0x19FFD4E1` for inverter state
+> returns `01` forever regardless of what the inverter is doing. Do not build a
+> UI on these. **All live power data is in `0x19FFD7E1` (AC), `0x19FEA3E1` (DC)
+> and the BMS frames.**
+
+The constant `0x7D` in `0x19FFCAE1` byte 4 never varies and is presumably a
+nameplate rating rather than a measurement.
+
+### `0x19FFD7E1` bytes 3–4 — AC current, offset-encoded
+
+Observed across the load test, with byte 4 constant at `0x7C`:
+
+| byte 3 | 16-bit LE | condition |
+|---|---|---|
+| `F9` | 31993 | idle |
+| `E4`, `E3` | 31972, 31971 | A/C fan only |
+| `DC` | 31964 | |
+| `70`, `5D`, `5A`, `56` | 31856 … 31830 | compressor running |
+
+It moves **inversely** with load, so it is offset-encoded around zero. Swing is
+**163 counts** from idle to full A/C — the right magnitude for the ~15 A shore
+limit in force at the time, but the exact scale factor is **unconfirmed**
+(163 counts would be 16.3 A at 0.1 A/bit, slightly over the set limit).
+
+*Test to pin it down: set branch amps to a very different value, load the system
+to the limit, and see whether the loaded reading tracks it.*
 
 ---
 
