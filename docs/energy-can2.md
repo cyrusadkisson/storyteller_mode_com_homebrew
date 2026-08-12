@@ -244,3 +244,42 @@ This also explains a BMS shutdown the owner experienced: an A/C start on a pack
 that was genuinely near-empty (the SOC gauge was reading ~55 % while cell
 voltages indicated far less) with one cell already at the floor. The BMS
 alarmed and opened the contactor, which is correct behaviour.
+
+---
+
+## Solar
+
+No solar controller node was found on CAN2 — the four source addresses are the
+BMS (`0x46`), cell monitor (`0x8E`), inverter/charger (`0xE1`) and circuit
+capacity (`0xF2`). The controller on this van appears to be standalone.
+
+**Solar is still measurable**, because its output flows into the pack and the
+BMS measures pack current. With shore power disconnected and the vehicle shut
+down (removing alternator charging), pack current *is* solar minus house load.
+
+Measured, van off, parked in sun:
+
+```
+53.30 V   −1.00 A  =  −53.3 W   into the pack     (panel displayed +58 W)
+```
+
+> **This is not the array's capacity.** SOC was 94 %, and a nearly-full
+> LiFePO₄ pack tapers — the figure reflects **what the battery will accept**,
+> not what the panel can produce. A meaningful solar measurement needs the pack
+> **below ~75 %** in good midday sun.
+
+### Standing loads
+
+| condition | draw |
+|---|---|
+| shore off, head unit on, no loads | **37 W** |
+| van fully shut down | lower, not yet isolated |
+
+At 164 Ah × 53 V that 37 W idle is roughly ten days of standing time.
+
+### Both open measurements need the same condition
+
+True solar output and the cell-9 divergence test both require a **drawn-down
+pack** (below ~75 % and ~30–40 % respectively). Neither is worth forcing —
+deliberately deep-cycling a pack with a suspect cell to obtain a measurement is
+a poor trade. Normal use off shore power will produce the condition.
