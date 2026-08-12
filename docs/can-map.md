@@ -129,3 +129,49 @@ addresses seen: `0x46` head unit, `0xE1` inverter/charger, `0x58` AC unit,
 3. **Port assignment** — decode which messages are on can0 vs can1.
 4. **Live capture** — validate the whole map on the bus; start with the known
    Rixen `0x724`/`0x788` frames to prove the capture rig before decoding unknowns.
+
+---
+
+## Tank levels decoded and verified against the panel (2026-08-12)
+
+`0x19FFB7AF` (PGN 1FFB7, SA `0xAF`) is **multiplexed on byte 0 = tank instance**
+— the DB's `Rx_FWTankStatus` and `Rx_GrayTankStatus` share one CAN id.
+
+| byte | field |
+|---|---|
+| 0 | **instance** — `0` = fresh water, `2` = gray |
+| 1 | level (raw count) |
+| 2 | resolution (full-scale count) |
+
+**level % = byte1 / byte2 × 100** — standard RV-C DGN 1FFB7.
+
+Verified live: `00 0B 18` → 11/24 = **45.8 %** fresh, `02 00 18` → 0/24 =
+**0 %** gray. The owner confirmed both match the panel exactly.
+
+## What the panel displays, and where each value comes from
+
+The head unit shows six live values. All six are now accounted for:
+
+| Panel display | Source | Bus |
+|---|---|---|
+| Interior temperature | `0x724` b0‑1 ×0.01, and `0x19FF9C58` | **CAN1** ✅ decoded |
+| Fresh tank level | `0x19FFB7AF` instance 0 | **CAN1** ✅ decoded |
+| Gray tank level | `0x19FFB7AF` instance 2 | **CAN1** ✅ decoded |
+| Battery state of charge | `LITH_Batt_StateOCharge` | **CAN2** |
+| Battery pack temperature | `LITH_Batt_Temp` | **CAN2** |
+| Power flow | `LITH_Batt_DCCurr` / `DC_Power` | **CAN2** |
+
+The three missing ones are all Lithionics, on `0x18FF8046` / `0x18EF0046`
+from SA `0x46` — a source address that has **never appeared** in any CAN1
+capture. This is now established two ways: by elimination (absent from CAN1)
+and by positive confirmation (everything CAN1 *does* carry has been decoded and
+matched against the panel).
+
+### Note on a false lead
+
+`0x14EF111E[FB]` / `0x14EF111F[FB]` byte 7 both read `0x34` (52), which looked
+like a plausible state-of-charge given a "50 %+" pack. It is **not** battery
+data — no Lithionics frame reaches this bus. Byte 6 of the same frame is also
+not supply voltage: the two PDMs reported 147–170 and 106–137 simultaneously,
+and two nodes on one 12 V system cannot disagree about it. Both bytes remain
+unidentified per‑PDM telemetry.

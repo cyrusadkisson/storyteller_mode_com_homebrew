@@ -105,15 +105,51 @@ the ~30 s delay is its own anti‑short‑cycle timer, not a command.
 > fan speed and cabin temperature — but **cannot show whether the compressor is
 > actually engaged.**
 
-### Open: a 2 °F discrepancy between display and wire
+### CONFIRMED: the panel displays 2 °F lower than it transmits
 
-The owner set the cool setpoint "73 → 70". The wire carried **75.0 °F → 72.0 °F**
-— a consistent **+2 °F** offset, not a rounding artifact (both readings are
-clean whole degrees after conversion). Either the panel displays something
-other than what it commands, or the recollection of the displayed numbers was
-off. **Unresolved** — worth one capture with the displayed value written down
-at the time, since an app that mirrors the panel needs to know which number to
-show.
+**Verified live 2026‑08‑12.** With the A/C running, the panel displayed a cool
+setpoint of **70 °F** while `0x19FEF903` bytes 5–6 carried **72.0 °F**. The
+owner read the number off the screen at the moment of capture, so this is not
+a misremembered value.
+
+**The offset is specific to the RV‑C thermostat frame.** The Rixen does not do
+it: a target of 90 °F set on the panel produced exactly `90.0 °F` in
+`0x788[01]`. So this is the head unit's thermostat translation, not its
+temperature handling in general.
+
+> **A companion app must compensate**, or it will display setpoints that
+> disagree with the panel beside it — which reads as a bug regardless of which
+> number is "right".
+
+### It is a constant offset, not a scale error (2026‑08‑12)
+
+Tested across three setpoints, with the panel value read off the screen each
+time:
+
+| Panel | Wire | Offset | Raw count | Correct raw for panel value | Delta |
+|---|---|---|---|---|---|
+| 67 °F | 69.0 °F | **+2.0** | 9393 | 9358 | 35 |
+| 68 °F | 70.0 °F | **+2.0** | 9411 | 9376 | 35 |
+| 70 °F | 72.0 °F | **+2.0** | 9447 | 9412 | 35 |
+
+Compared in **raw counts** rather than the rounded °F conversion, the error is
+~35 counts at every setpoint. A scale error would grow with temperature; this
+does not.
+
+Each panel degree = **18 raw counts** (`9393 → 9411 → 9447`), so the panel steps
+in whole °F.
+
+> **App rule: `displayed = wire − 2 °F`** for the A/C cool setpoint.
+
+Likely deliberate rather than a bug — offsetting the command so the A/C's own
+hysteresis band centres on the requested temperature.
+
+**Limit of the evidence:** the test spans 3 °F. A scale error small enough to
+stay under half a degree across that range cannot be strictly excluded.
+
+**Still unknown: does the offset apply to the heat setpoint?** The heat field
+read 88 °F during the Rixen session, but the panel's A/C heat value was not
+recorded at the time.
 
 ### `0x18E80358` — J1939 Acknowledgement (A/C `0x58` → head unit `0x03`)
 
@@ -214,3 +250,80 @@ Open transit: ~10–11 s, measured on two independent runs.
   not confirmed by decode. Toggling fan speed and furnace separately would
   settle them.
 - `0x789` HC_SetIO (bitfield + 32‑bit field) never observed.
+
+
+---
+
+## Heat: source selection and the deadband (2026-08-12)
+
+### Mode 2 = HEAT confirmed
+
+`0x19FEF903` byte 1 low nibble reached **`2`** when the overhead unit was set to
+heat. Observed values on this van are now `0` off, `1` cool, `2` heat.
+
+### "Fuel / elec / dual" is a source selector between two systems
+
+The panel's heat page engages the **Rixen** immediately, and a second control
+switches the source between `fuel`, `elec` and `dual`. On the wire that hands
+the job between two entirely separate subsystems:
+
+```
+switch to HEAT (fuel)          switch fuel -> elec
+  RIXEN[03] 0 -> 1  furnace ON   RIXEN[03] 1 -> 0  furnace OFF
+  RIXEN[01] -> 322  target 90F   RIXEN[02] -> 0    fan off
+  RIXEN[02] -> 15   fan speed    RIXEN[01] -> 1
+  THERMOSTAT mode -> 0 (OFF)     THERMOSTAT mode -> 2 (HEAT), fan 0x1E
+```
+
+The two are **mutually exclusive** in fuel and elec — only one is commanded at a
+time. `dual` presumably commands both; not yet captured.
+
+### Rixen sub-commands 01 / 02 / 03 confirmed
+
+Previously inferred from the DB's ordering, now proven by watching them change
+together with a known user action:
+
+| mux | sub-command | evidence |
+|---|---|---|
+| `01` | **Set TempTarget** | `1` → `322` = 90.0 °F, matching the displayed target |
+| `02` | **Set FanSpeed** | `0` → `15` with the furnace, → `0` when switched away |
+| `03` | **Set Furnace** | `0` → `1` on fuel heat, `1` → `0` on switch to elec |
+
+### The 2 °F offset is a DEADBAND, not a correction
+
+With a displayed target of **90 °F**:
+
+| value | wire | relationship |
+|---|---|---|
+| Rixen target (`0x788[01]`) | 90.0 °F | **panel + 0** — no offset |
+| Thermostat **heat** setpoint | 88.0 °F | **panel − 2** |
+| Thermostat **cool** setpoint | 70.0 °F | **panel 68 + 2** |
+
+The head unit is not applying a fixed correction — it builds a **±2 °F deadband**
+around the requested temperature, and **only in the RV‑C thermostat frame**. The
+Rixen receives the number unmodified.
+
+This also explains the 88 °F seen during the previous session's Rixen test,
+which had been logged as unexplained: the target then was also 90.
+
+> **App rule (revised):** cool setpoint = displayed + 2; heat setpoint =
+> displayed − 2; Rixen target = displayed. Do **not** apply one blanket offset.
+
+### CONFIRMED by observed transition (2026-08-12)
+
+Target moved from 90 to 78 with the overhead unit in heat. Both rules appear in
+the same frames, at two different temperatures 11 degrees apart:
+
+| t | panel | thermostat heat | Rixen target |
+|---|---|---|---|
+| 2.21 | 89 *(passing through)* | **87.0 °F** = −2 | **89.1 °F** = +0 |
+| 5.55 | **78** | **76.0 °F** = −2 | **78.1 °F** = +0 |
+
+Predicted 76.0, observed 76.0. The cool setpoint held at 70.0 throughout,
+untouched — consistent with it being an independent field.
+
+The Rixen's trailing `.1 °F` is quantisation, not error: it carries 0.1 °C
+units, so 78 °F → 25.6 °C → 78.08 °F.
+
+**The deadband is now observed, not inferred.** Nothing further outstanding on
+the setpoint encoding.
