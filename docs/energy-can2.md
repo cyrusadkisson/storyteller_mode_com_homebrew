@@ -46,7 +46,16 @@ against arithmetic on another frame.
 | **4–7** | **DC current** | 32-bit LE, 1 mA/bit, **offset −2 000 000 000** |
 
 Verified: `0x0428` = 1064 × 0.05 = **53.20 V**, which is exactly the 16 cells ×
-3.325 V reported by the app. Current `0x77359658` − 2e9 = 600 mA = **0.6 A**.
+3.325 V reported by the app.
+
+> **SIGN CONVENTION: positive = current OUT of the pack (discharging).**
+> Confirmed against the panel with shore power disconnected — the wire read
+> `+0.70 A` at 53.20 V = **37.2 W**, and the panel simultaneously displayed
+> **−37 W**. Magnitude exact, sign inverted relative to the panel's display.
+>
+> An app must **negate this** to match what the panel shows the owner.
+> (Earlier revisions of this document labelled small positive values as
+> "charging". That was wrong — they were small discharges.)
 
 ### `0x19FFFC46` — DC_SOURCE_STATUS_2
 
@@ -196,6 +205,8 @@ to the limit, and see whether the loaded reading tracks it.*
 ## Measured: what the air conditioner actually costs
 
 Captured live, on shore power with the limit at 15 A and the pack at 100 %:
+
+Sign convention below: **positive = discharge**, i.e. current leaving the pack.
 
 | t | pack current | event |
 |---|---|---|
