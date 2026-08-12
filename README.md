@@ -159,12 +159,17 @@ rights to the vendor firmware, which is not included here.
 | **PDM load control** | **protocol cracked, 10 channels confirmed on the wire** ([`pdm-control.md`](docs/pdm-control.md)) |
 | **Climate** | **Rixen, thermostat and vent fully decoded** ([`climate-control.md`](docs/climate-control.md)) |
 | Tanks | decoded, verified against the panel |
-| Battery / inverter | on **CAN2** — decoding in progress |
+| **Battery / inverter / charger** | **CAN2 tapped and largely decoded** ([`energy-can2.md`](docs/energy-can2.md)) |
 | Companion device | not started |
 
-The van uses **two CAN buses split by function**: CAN1 carries house loads,
-tanks, climate; CAN2 carries the battery, inverter and charger. See
-[`hardware-and-tap.md`](docs/hardware-and-tap.md).
+The van uses **two CAN buses split by function**: CAN1 (pins 5/6) carries house
+loads, tanks and climate; CAN2 (pins 18/19) carries the battery, inverter,
+charger and shore power. Both are 250 kbit/s. See
+[`hardware-and-tap.md`](docs/hardware-and-tap.md) for the tap, and
+[`energy-can2.md`](docs/energy-can2.md) for the energy bus.
+
+A companion device needs **both** buses to be useful — state of charge, pack
+current and temperature are only on CAN2.
 
 Every claim is labelled by how strongly it is supported — `CONFIRMED` means
 observed on the wire, `predicted` means derived but untested. See
