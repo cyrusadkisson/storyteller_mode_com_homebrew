@@ -578,3 +578,77 @@ from a phone UI is a good way to spoil food.
 
 This is a useful category distinction: *a channel existing in the map does not
 mean it is something to expose in a UI.*
+
+---
+
+# FIRST TRANSMISSION (2026-08-12) — we can command loads
+
+The project's last core unknown is closed. We transmitted on the live bus and
+the PDM obeyed. Method, findings, and the design consequences:
+
+## Setup
+
+CANable on CAN1 (pins 5/6), brought up TX-capable via `./tools/can_up.sh --tx`
+(script verifies TX mode by readback — `listen-only` is a *sticky* flag that
+survives down/up unless explicitly cleared with `listen-only off`; an earlier
+revision of the script lied about this).
+
+**Baseline facts:** `0x14EF1E11[FC]` was broadcasting continuously at **~45 Hz**
+(cabin lights were on at `0x26`). The head unit does not send on change — it
+*re-asserts its entire state every ~22 ms*. Whole bus ~450 fps.
+
+## Test 1 — no-op (PASSED)
+
+Sent the live frame back byte-for-byte identical
+(`cansend can0 14EF1E11#FC7F000026000000FF`). TX counter +1, every error
+counter frozen. Proves the adapter can drive the bus without disturbing it.
+
+## Test 2 — foreign source address (NEGATIVE, and important)
+
+Sent "cabin off" bursts from **SA 0x12** (`0x14EF1E12`): first 30 frames over
+0.3 s, then 200 frames over 2 s. Result: the PDM's status echo
+(`0x14EF111E[C9]` byte 1 bits 4–5) stayed `0x30` throughout — **never a single
+off sample**. No physical reaction.
+
+**The PDM obeys ONLY source address `0x11` (the head unit).** A foreign
+address is completely ignored, no matter the rate. (Upside of the test: even a
+200-frame burst from a different id produced **zero bus errors** — different ids
+arbitrate, they never collide into bit errors.)
+
+## Test 3 — shadow injection, SA 0x11 (SUCCESS)
+
+Tool: [`tools/can_shadow.py`](../tools/can_shadow.py). Listens for the head
+unit's own frame, then transmits immediately **behind** it, inside its 22 ms
+quiet gap, from SA 0x11. Payload = copy of the live frame with exactly one
+byte changed (byte 4 = Cabinlights). Timing off the observed frame keeps
+collision odds near zero — same-id/different-data overlap is the one thing on
+CAN that produces error frames.
+
+- 45 injections, cabin → `0x00`: status byte 1 went `0x00` (off) on **12 of 75**
+  samples during the window. The PDM's own broadcast confirmed the channel was
+  switching off. **Zero bus errors.**
+- 90 injections, cabin → `0x7F` (full): **visibly reacted** — the owner saw the
+  cabin lights jump, unmistakably. **Zero bus errors.**
+
+Totals for the day: ~370 transmitted frames, `bus-errors 0`, `error-warn/pass`
+unchanged, no restarts.
+
+## What this means for the companion box (phase 3)
+
+1. **Writes must impersonate SA 0x11.** Only that address is obeyed.
+2. **Nothing persists by itself.** The head unit re-asserts every ~22 ms, so a
+   one-shot write holds for at most one cycle. To *hold* a state, the box must
+   re-inject continuously (the shadow trick, following the HU's broadcast).
+   This is also the safety net: a crashed box stops injecting and the stock
+   system re-takes full control within 22 ms, unaided. Failsafe by physics.
+3. **Copy-then-modify is mandatory.** Every command frame carries six channels;
+   only ever change the one byte you mean to, mirroring the rest of the live
+   frame. Blind payload constants would switch off standing channels
+   (SolarBattBackup reads `7F` on the FC frame).
+4. **Physical response appears smoothed.** A ~1 s off burst was wire-visible but
+   eyeball-missed; 2 s to full brightness was unmissable. Short injections get
+   averaged out at the load. Hold times of ~1–2 s look like the practical
+   minimum for a state to feel "real."
+5. **Never fight the head unit at high rate from a foreign id** expecting the
+   PDM to hear you (it won't), and never blindly spam SA 0x11 without the
+   shadow timing, for collision-error reasons.

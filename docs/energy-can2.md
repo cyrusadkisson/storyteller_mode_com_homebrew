@@ -137,18 +137,15 @@ among the 132s) and are probably min/max/average plus temperatures.
 > supported only by the count byte (`0x10` = 16) and by sixteen × the decoded
 > value landing near pack voltage.
 
-**Falsifiable test (unchanged, now doing double duty):** at genuinely low SOC —
-below ~30 % — this pack's weakest cell is #9.
+**Drawn-down test done (2026-08-12) — cell 9 is fine.** With the pack finally
+pulled down, the app showed cell 9 in line with the rest of the pack. The
+2026-08-11/12 shutdown was genuine low-SOC starvation on a stale SOC gauge, not
+a failing cell. The per-cell ordering question above is now moot for practical
+purposes: the pack has no misbehaving cell to track, and fine imbalance below
+~0.01 V remains invisible on the bus anyway.
 
-- If the bus bytes **start to differ** and `0x18FF958E` byte 4 is the low one,
-  both the per-cell structure and the ordering are confirmed.
-- If they differ but a **different** byte is low, the ordering is wrong.
-- If they **stay locked together** while the app shows a real spread, they are
-  **not per-cell data** and this section is wrong.
-
-**Practical consequence meanwhile:** fine imbalance below ~0.01 V is invisible
-on the bus — use the phone app for that. A divergence that actually matters
-(cell 9 was once 0.29 V low, i.e. 29 counts) would be unmissable either way.
+**Standing practice (manual):** check the per-cell screen in the Lithionics
+phone app occasionally, e.g. after any deep discharge. No automation needed.
 
 ---
 
@@ -274,26 +271,23 @@ alarmed and opened the contactor, which is correct behaviour.
 
 ---
 
-## Solar
+## Solar — RESOLVED (2026-08-12)
 
 No solar controller node was found on CAN2 — the four source addresses are the
 BMS (`0x46`), cell monitor (`0x8E`), inverter/charger (`0xE1`) and circuit
-capacity (`0xF2`). The controller on this van appears to be standalone.
+capacity (`0xF2`). The controller on this van is standalone, and that is fine:
+the array works, and that is all that needed answering.
 
-**Solar is still measurable**, because its output flows into the pack and the
-BMS measures pack current. With shore power disconnected and the vehicle shut
-down (removing alternator charging), pack current *is* solar minus house load.
+**The array is 175 W nominal; ~50–80 W was observed in full sun — but the pack
+was near full at the time**, and a nearly-full LiFePO₄ pack tapers. So 50–80 W
+is what the battery would *accept*, not a ceiling on what the array can
+produce. True array output is still unmeasured, and it is fine for it to stay
+that way — the panel works, which is all that needed answering.
 
-Measured, van off, parked in sun:
-
-```
-53.30 V   −1.00 A  =  −53.3 W   into the pack     (panel displayed +58 W)
-```
-
-> **This is not the array's capacity.** SOC was 94 %, and a nearly-full
-> LiFePO₄ pack tapers — the figure reflects **what the battery will accept**,
-> not what the panel can produce. A meaningful solar measurement needs the pack
-> **below ~75 %** in good midday sun.
+There was no bus mystery to solve: solar flows into the pack and the BMS
+measures pack current, so solar is visible indirectly as (pack current + house
+load) whenever shore power and the alternator are out of the picture. Nothing
+further to decode.
 
 ### Standing loads
 
@@ -304,9 +298,10 @@ Measured, van off, parked in sun:
 
 At 164 Ah × 53 V that 37 W idle is roughly ten days of standing time.
 
-### Both open measurements need the same condition
+### Formerly-open measurements — both closed (2026-08-12)
 
-True solar output and the cell-9 divergence test both require a **drawn-down
-pack** (below ~75 % and ~30–40 % respectively). Neither is worth forcing —
-deliberately deep-cycling a pack with a suspect cell to obtain a measurement is
-a poor trade. Normal use off shore power will produce the condition.
+True solar output and the cell-9 divergence question both needed a drawn-down
+pack. Normal use provided it: **solar resolved** (175 W array, ~50–80 W real,
+nothing on the bus to decode), **cell 9 resolved** (in line with the pack — the
+earlier "failing cell" suspicion did not survive a real drawdown). No open
+measurement items remain on CAN2.

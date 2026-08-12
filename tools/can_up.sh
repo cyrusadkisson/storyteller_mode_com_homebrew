@@ -10,8 +10,16 @@
 # system. In listen-only the transceiver physically cannot drive the bus.
 set -euo pipefail
 
-BITRATE="${1:-250000}"
-MODE="${2:-}"
+# Args in any order: a number = bitrate, --tx = transmit mode.
+BITRATE="250000"
+MODE=""
+for arg in "$@"; do
+  case "$arg" in
+    --tx) MODE="--tx" ;;
+    *[!0-9]*) die "Unknown argument: $arg  (usage: can_up.sh [bitrate] [--tx])" ;;
+    *) BITRATE="$arg" ;;
+  esac
+done
 IFACE="${IFACE:-can0}"
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -45,8 +53,15 @@ sudo ip link set "$IFACE" down 2>/dev/null || true
 # you cannot enter bus-off if you never transmit.
 if [[ "$MODE" == "--tx" ]]; then
   printf '\033[33m!! TRANSMIT ENABLED — this adapter can now drive the van bus.\033[0m\n'
-  sudo ip link set "$IFACE" up type can bitrate "$BITRATE" \
+  # NOTE: listen-only is STICKY — it must be disabled explicitly or it survives
+  # the down/up cycle and the interface stays TX-deaf. Verify by readback below.
+  sudo ip link set "$IFACE" up type can bitrate "$BITRATE" listen-only off \
     || die "Failed to bring up $IFACE at ${BITRATE} bps."
+
+  if ip -details link show "$IFACE" | grep -qi 'listen-only'; then
+    sudo ip link set "$IFACE" down 2>/dev/null || true
+    die "asked for TRANSMIT but readback still shows LISTEN-ONLY — refusing to proceed."
+  fi
 else
   sudo ip link set "$IFACE" up type can bitrate "$BITRATE" listen-only on \
     || die "Interface refused listen-only mode. Update the CANable firmware, or accept
