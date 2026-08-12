@@ -10,6 +10,54 @@ electrical system), this project builds a **parallel companion controller** that
 speaks the van's own control bus, leaving the stock system fully intact as a
 fallback.
 
+---
+
+# ⚠️ DISCLAIMER — READ BEFORE USING ANY OF THIS
+
+**USE ENTIRELY AT YOUR OWN RISK. NO WARRANTY OF ANY KIND IS OFFERED OR IMPLIED,
+INCLUDING AS TO ACCURACY.**
+
+This repository documents an **independent, amateur** reverse‑engineering effort
+by a vehicle owner. It is **not** engineering guidance, not a service manual,
+not vendor‑sanctioned, and has **not** been reviewed by anyone qualified to
+review it. Some of it is certainly wrong.
+
+Acting on this information can **damage your vehicle, destroy expensive
+equipment, cause fire, cause serious injury, or kill you.** Specifically:
+
+- **High‑voltage DC.** This van's house system is **48 V nominal (~53 V
+  charged)**, not 12 V. A large lithium pack can deliver hundreds of amps into
+  a short with no fuse in between. It does not care that you are careful. DC
+  arcs do not self‑extinguish the way AC does.
+- **Fire.** Improper taps, undersized conductors, and unfused connections are a
+  fire risk in a vehicle you may be asleep inside.
+- **Machinery.** These commands drive **motors, pumps, heaters and a furnace**.
+  A command written to a motor channel **latches** — it keeps driving until
+  something writes zero. Crashed software, a dropped connection, or a bug can
+  leave an awning motor straining against its stop or a pump running dry.
+- **Safety systems.** The bus documented here is shared with the battery
+  management, inverter and charger. Interfering with a BMS can defeat
+  protections that exist to prevent thermal runaway.
+- **Warranty and insurance.** Tapping wiring or transmitting on the vehicle bus
+  may **void your vehicle, appliance or battery warranty**, and may affect
+  insurance claims. That is between you and them.
+
+**Findings come from exactly one MY24 van.** Other model years, trim levels and
+build configurations differ. A channel that is a light on this van may be
+something else on yours. **Verify everything against your own vehicle** before
+acting on it, and assume the mapping is wrong until you have proven otherwise.
+
+**Do not use this on a vehicle you do not own**, and do not use it to interfere
+with anyone else's property.
+
+Nothing here has been verified by transmitting. Everything was obtained
+**passively, by listening.** The authors and contributors accept **no liability
+whatsoever** for any loss, damage or injury arising from use of this material.
+If you are not prepared to own the consequences of your own actions on your own
+vehicle, **do not proceed.**
+
+---
+
 ## The system (what we're working with)
 
 | | |
@@ -76,6 +124,11 @@ the point of it, and it is also the risk.
 Everything documented here was obtained **passively**, by listening. Nothing in
 this repository has been verified by transmitting.
 
+**If you transmit, you own what happens.** Bring the bus up listen-only, prove
+you are on the right one, and treat the first transmitted frame as its own
+deliberate project with a load chosen so the worst case is a light coming on —
+not a motor moving, not a heater igniting, not a pump running.
+
 ## Not affiliated
 
 This is an independent, unofficial project by a **Storyteller Overland owner**.
@@ -85,6 +138,8 @@ any other vendor named here. All trademarks belong to their respective owners.
 
 Findings come from one MY24 van. Other model years and build configurations
 will differ. Verify against your own vehicle before relying on anything here.
+See the **disclaimer at the top of this file** — it is not boilerplate, and the
+48 V system in particular is a genuine hazard rather than a formality.
 
 ## License
 
