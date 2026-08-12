@@ -117,11 +117,38 @@ Sixteen of those gives 53.1 V, against **53.20 V** decoded independently from
 `0x18FF918E` and `0x18FF928E` have a different shape (values `4E`/`4F` = 78/79
 among the 132s) and are probably min/max/average plus temperatures.
 
-> **This mapping is NOT confirmed.** A fully-charged, balanced pack looks
-> identical whichever order the cells are in. **Falsifiable test:** this pack's
-> weakest cell is #9, so `0x18FF958E` **byte 4** should fall away from the others
-> *before* anything else as the pack discharges. If a different byte drops, the
-> ordering is wrong.
+> **This mapping is NOT confirmed — and confidence went DOWN on 2026-08-12.**
+>
+> At 62 % SOC under a 1.4 kW load, the **phone app showed a mix of 3.25 V and
+> 3.26 V across the pack, while all sixteen bus bytes read an identical
+> `0x7D`.** The bus did not reproduce a spread the app could see.
+>
+> Two explanations, and they are not equally comfortable:
+>
+> 1. **Resolution.** The field is 0.01 V per count and truncates, so cells at
+>    3.254 and 3.256 land on the same byte. Consistent with pack voltage of
+>    52.20 V = 3.2625 V/cell, right on the rounding boundary.
+> 2. **These may not be per-cell values at all.** A min/max/average replicated
+>    across the frame would produce data indistinguishable from what we have.
+>    **These sixteen bytes have never once been observed differing from each
+>    other**, at any state of charge.
+>
+> Until they are seen to diverge, "sixteen cells" remains a structural guess
+> supported only by the count byte (`0x10` = 16) and by sixteen × the decoded
+> value landing near pack voltage.
+
+**Falsifiable test (unchanged, now doing double duty):** at genuinely low SOC —
+below ~30 % — this pack's weakest cell is #9.
+
+- If the bus bytes **start to differ** and `0x18FF958E` byte 4 is the low one,
+  both the per-cell structure and the ordering are confirmed.
+- If they differ but a **different** byte is low, the ordering is wrong.
+- If they **stay locked together** while the app shows a real spread, they are
+  **not per-cell data** and this section is wrong.
+
+**Practical consequence meanwhile:** fine imbalance below ~0.01 V is invisible
+on the bus — use the phone app for that. A divergence that actually matters
+(cell 9 was once 0.29 V low, i.e. 29 counts) would be unmissable either way.
 
 ---
 
