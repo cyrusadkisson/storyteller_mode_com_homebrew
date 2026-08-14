@@ -49,3 +49,6 @@ dist/
 build/
 .DS_Store
 captures/
+
+# Personal downloads (Facebook photos/screenshots re: ModeWifi project)
+hanger/

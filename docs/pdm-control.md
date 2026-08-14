@@ -652,3 +652,16 @@ unchanged, no restarts.
 5. **Never fight the head unit at high rate from a foreign id** expecting the
    PDM to hear you (it won't), and never blindly spam SA 0x11 without the
    shadow timing, for collision-error reasons.
+
+## A second strategy: spoof the wall-switch inputs (from ModeWifi)
+
+Independent owner project ModeWifi confirms this entire map and adds a
+complementary control method: instead of commanding outputs as the head unit,
+**press the physical switches on the wire** — copy the PDM's digital-input
+status frame (`0x14EF111E` mux `F0`/`F8`), set the switch's 2-bit field to
+`0b10` for ~100 ms, release — sent from the **PDM's** address (SA `0x1E`),
+which the head unit trusts for input data. The head unit then changes its own
+state and holds it in its own 45 Hz broadcast. Persistence without fighting
+the chatter. Full analysis: [`modewifi-analysis.md`](modewifi-analysis.md),
+including the **per-channel feedback-amps** frames (mux `F9/C9/39` and
+`0A/CA/FA`, bytes 2–7 × 0.125 A) that make an app truly stateful.
