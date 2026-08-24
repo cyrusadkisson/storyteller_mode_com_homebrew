@@ -14,6 +14,16 @@ immediately. See [`hardware-and-tap.md`](hardware-and-tap.md).
 
 Also 250 kbit/s. 29 ids, ~49 frames/s — much quieter than CAN1's ~450.
 
+### T-2CAN-FD CAN-B on CAN2 (2026-08-24)
+
+The companion board's **B channel (ESP32 TWAI, GPIO 6/7)** is now physically
+tapped into CAN2 (pins 18/19, the second green/yellow pair; its own isolated
+SGND tap on the van ground — the two channels are independently isolated).
+Verified live with a listen-only probe at 250 kbit/s: BMS (`0x46`) status
+frames and inverter/charger (`0xE1`) frames are on the wire exactly as
+documented above, plus `0x19FFD7E1` as a ~15 Hz heartbeat. This completes the
+two-bus hardware — CAN-A ↔ CAN1 (control), CAN-B ↔ CAN2 (energy).
+
 ## Nodes
 
 Identified from J1939 address claims (`0xEEFF`), which carry the 64-bit NAME:

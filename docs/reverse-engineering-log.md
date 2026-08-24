@@ -210,3 +210,22 @@ muxes still detected, and the cabin-light result reproduces unchanged.
 `0x78A` bytes 2–3 mirror `0x724` bytes 0–1, and `0x788[0C]` byte 1 carries the
 same value as `0x19FF9C58` byte 1 (ambient from the A/C, relayed to the Rixen
 heater — matching `Rixen Send Amb Temp` in the DB).
+
+## 2026-08-24 — T-2CAN-FD live control session (companion)
+
+Both the A/C and the inverter are controllable from the companion. The panel
+UI is a **one-way display**: it never reflects externally-issued commands, so
+**power flow / bus state is the source of truth, never the screen.**
+
+**A/C command** — `0x19FEF903` [8] `01 <on/off> 64 2F 25 40 25 00`
+(byte 1 = `01` on / `00` off; byte 0 constant `01`). Verified: fan went to
+high, cooling element came on, ~1 kW off the inverter. **Bug trap:** byte 1 is
+the on/off and the frame is 8 bytes — a premature 7-byte attempt only ran the
+low fan. Fan low/high/auto button mapping still pending (capture
+`19FEF903` while pressing those).
+
+**Inverter (CAN2)** — `19FFD3F2` [8] `01 <on/off> 00 00 00 00 00 00`
+(byte 1 = `01` on / `00` off), single-shot latch. Initial "failure" was purely
+the screen not updating; the power-flow confirms it works (idle draw rises, and
+the A/C runs off it). ModeWifi has **no inverter control** — his HVAC is fed via
+PDM2 output DO9 (`HVAC_POWER`), a DC unit, unlike our 120 V inverter-fed roof.

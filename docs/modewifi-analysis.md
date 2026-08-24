@@ -93,7 +93,10 @@ van** — all of this must be diff-confirmed on our own captures before use.
 | Cabin | PDM1 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 |
 | Garage (Cargo) | PDM1 F0 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI3 |
 | Water pump | PDM2 F0 | 7 | 3 (bits 6–7) | `0x80` | ✓ DI5 |
-| Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, momentary/hold |
+| Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, hold-to-run, **parked manual** |
+| Aux | PDM2 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 — exterior perimeter lighting |
+| Recirc | PDM1 F0 | 7 | 2 (bits 4–5) | `0x20` | ✓ DI1 — momentary; HU auto-timer ~10 s |
+| Awning light | PDM1 F0 | 7 | 3 (bits 6–7) | `0x80` | ✓ DI5 — toggle; verified w/o awning deployed |
 
 Every slot so far matches his table byte-for-byte — his van ≠ this van was the
 open question, and the answer so far is "no difference." Input-spoof round-trip
@@ -102,6 +105,17 @@ both directions held by the HU's own re-broadcast.
 
 Remaining unverified on this van: recirc, awning light, awning enable/out/in,
 Aux. (An earlier mis-toggle capture was discarded, not trusted.)
+
+**Hold-to-run limitation (2026-08-24, wire-verified):** the input-spoof cannot
+sustain a *hold-to-run* switch on this van. The sink drain (PDM2 F8, byte 6,
+slot 1) physically requires the field held ~0.8 s while the PDU itself
+re-broadcasts it as released at ~25 Hz — so a parallel tap can only ever put a
+flickering `0b10` on the wire (confirmed: 50 press frames in 1 s, HU never
+commanded DO5). Toggle switches (cabin/garage/water pump) work fine off a
+single pulse. Control of hold-to-run loads (sink drain now; awning motor
+untested, do not assume) requires the **cut-and-stand-in** architecture
+(rewrite the panel's commands in flight) — parked as a phase-3 milestone.
+Drain parked manual-only by owner decision.
 
 Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
 `A5`), another digital input is changing — the F0 stream is dynamic, exactly why
