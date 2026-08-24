@@ -63,6 +63,15 @@ CANable CAN_L  ->  GREEN
 CANable GND    ->  van chassis / black wire     <- do not skip this
 ```
 
+The user's own jumper leads carry a mnemonic: **sky = high**, **ocean = low**,
+**ground = black**.
+
+```
+WHITE jumper  <->  van YELLOW  (CAN_H)
+BLUE  jumper  <->  van GREEN   (CAN_L)
+BLACK jumper  <->  van BLACK   (ground)
+```
+
 - **Termination switch OFF.** The bus is already terminated at both ends; a
   third terminator unbalances it.
 - Ground is not optional — without a shared reference the transceiver sees

@@ -77,6 +77,21 @@ Note the **reversed pairing within each byte** (low slot = higher DI number) —
 same ordering family we found in status mux `C9`. **Unverified against our
 van** — all of this must be diff-confirmed on our own captures before use.
 
+**Verified on our van 2026-08-24 (T-2CAN-FD + Jhoinrch):**
+- **Cabin (DI4)** — confirmed: PDM1 F0, byte 6 (7th payload byte), slot 0
+  (bits 0–1), pressed = `0b10`. F8 frame never moved during the toggle, as
+  predicted for a PDM1 DI.
+- **Input spoof validated live**: copied the live F0 frame, set the cabin slot
+  to `0b10`, re-sent as SA 0x1E (~150 ms), then cleared. The HU reacted within
+  ~0.5 s and commanded its own DO4 from `0x00` to `0x13` and held it; the cabin
+  light turned on. The release frame (slot cleared) is indistinguishable from
+  the PDU's own baseline F0 stream — no extra bus footprint.
+- The rest of his switch→bit table is still unverified on this van (a second
+  toggle attempt was discarded, not trusted).
+- Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
+  `A5`), i.e. another digital input changed — the F0 stream is dynamic, which is
+  exactly why copy-live-then-modify matters.
+
 ## 3. Status mux map (his, for `0x14EF111E` — supersedes our notes)
 
 | mux | meaning (his) |
