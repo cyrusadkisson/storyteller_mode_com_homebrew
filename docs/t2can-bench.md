@@ -6,8 +6,9 @@ verified on the bench, and the two real firmware bugs in the LILYGO stock
 example for this exact board that silently break any CAN work.
 
 Status: **benched and verified** — both channels transmit/receive on the board's
-own self-loop, and channel A's frames are correctly decoded by the Jhoinrch
-CANable.
+own self-loop, channel A's frames are decoded by the Jhoinrch CANable at 500k,
+and channel A transmits the van's real 29-bit extended PDM datagrams at the van's
+bus speed (250 kbit/s), confirmed by the Jhoinrch (2026-08-24).
 
 ## Toolchain (Linux, x86_64)
 
@@ -87,6 +88,33 @@ and both of these tests pass:
 - **Jhoinrch link**: wiring channel A into the Jhoinrch (CANHA→CAN_H,
   CANLA→CAN_L, SGNDA→GND, R120 switch ON) and bringing `can0` up at 250 000 kbit/s
   classic, `candump` decodes `0AA [8] 41 41 41 41 41 41 41 41` cleanly.
+
+## Van datagrams at the van's speed (2026-08-24)
+
+The milestone: **prove channel A can emit the van's real frames — the same
+datagrams we reverse-engineered off CAN1 — at 250 kbit/s classic, and that the
+Jhoinrch decodes them as-is.** This is the bench rehearsal for the van
+integration test (T-2CAN-FD spliced into CAN1, impersonating SA 0x11).
+
+Firmware: `examples/bench250k/bench250k.ino` (built with `default_envs = bench250k`).
+The van's IDs are 29-bit extended, so the `sendMsgBuf(id, ...)` **second argument
+must be 1** (extended frame) — with `0` the MCP2518FD truncates the ID to 11 bits
+and the wire shows a garbage standard ID. That bug bit us once; the fix was four
+call-site edits from `ext=0` to `ext=1`.
+
+Verified capture (`candump -tz can0` at `bitrate 250000`, two full 6s loop
+cycles, zero errors):
+
+```
+can0  14EF1E11  [8] FC 00 00 00 7F 00 00 FF   # PDM1 cmd, cabin lights ON  (DO4=0x7F)
+can0  14EF1E11  [8] FC 00 00 00 00 7F 00 FF   # PDM1 cmd, cabin lights OFF (DO4=0x00)
+can0  14EF1F11  [8] FC 00 00 00 7F 00 00 FF   # PDM2 cmd
+can0  14EF111E  [8] FC 00 00 00 00 7F 00 FF   # PDM1 status ID
+```
+
+Frames repeat every ~6s at ~1.7s spacing. Wire IDs and payload bytes match the
+van's datagrams byte-for-byte. The T-2CAN-FD can now speak the van's language
+before ever touching the real bus.
 
 ## Misc hard-won notes
 
