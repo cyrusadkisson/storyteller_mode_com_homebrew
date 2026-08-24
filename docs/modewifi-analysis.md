@@ -86,11 +86,26 @@ van** — all of this must be diff-confirmed on our own captures before use.
   ~0.5 s and commanded its own DO4 from `0x00` to `0x13` and held it; the cabin
   light turned on. The release frame (slot cleared) is indistinguishable from
   the PDU's own baseline F0 stream — no extra bus footprint.
-- The rest of his switch→bit table is still unverified on this van (a second
-  toggle attempt was discarded, not trusted).
-- Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
-  `A5`), i.e. another digital input changed — the F0 stream is dynamic, which is
-  exactly why copy-live-then-modify matters.
+**Four switches now verified against the live van (clean toggles, 2026-08-24):**
+
+| Switch | Frame | Byte | Slot | Press value | His table |
+|---|---|---|---|---|---|
+| Cabin | PDM1 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 |
+| Garage (Cargo) | PDM1 F0 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI3 |
+| Water pump | PDM2 F0 | 7 | 3 (bits 6–7) | `0x80` | ✓ DI5 |
+| Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, momentary/hold |
+
+Every slot so far matches his table byte-for-byte — his van ≠ this van was the
+open question, and the answer so far is "no difference." Input-spoof round-trip
+also proven: spoofed press turned the cabin on, a second press turned it off,
+both directions held by the HU's own re-broadcast.
+
+Remaining unverified on this van: recirc, awning light, awning enable/out/in,
+Aux. (An earlier mis-toggle capture was discarded, not trusted.)
+
+Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
+`A5`), another digital input is changing — the F0 stream is dynamic, exactly why
+copy-live-then-modify matters.
 
 ## 3. Status mux map (his, for `0x14EF111E` — supersedes our notes)
 
