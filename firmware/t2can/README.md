@@ -9,10 +9,14 @@ Vendored 2026-08-24 so a `/tmp` cleanup can't take the phase-2 work with it.
 
 ## Contents
 
-- `examples/companion/` — **the current firmware.** Two-bus live: CAN-A
-  (MCP2518FD) on the van's CAN1, CAN-B (TWAI, GPIO6/7) on CAN2. Input-spoofs
-  the six verified wall switches, commands A/C (mode/setpoints/compressor),
-  vent fan and inverter, reads tank levels + battery. Serial-command driven.
+- `examples/app/` — **the current firmware: the phone UI.** WiFi AP
+  `VanCompanion` (pw `storyteller`), captive portal + mDNS `van.local`, single
+  page wrapping every verified control (6 switch toggles via input spoof,
+  A/C + setpoint + compressor, vent, inverter) over a live state layer
+  (per-channel levels + feedback amps, tanks, battery, temps, fault frames).
+  `default_envs = app`.
+- `examples/companion/` — the serial-command precursor to `app`. Same two-bus
+  core and commands, driven over the USB serial console instead of WiFi.
 - `examples/bench250k/` — bench milestone: emits the van's real 29-bit PDM
   datagrams at 250k, verified by the CANable.
 - `examples/listen/`, `examples/listenb/` — CAN1 / CAN2 dumpers.
