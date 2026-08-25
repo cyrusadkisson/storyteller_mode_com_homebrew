@@ -3,10 +3,12 @@
 # These are Storyteller Overland / 3sigma (Enovation Controls) copyrighted,
 # signed software. Do NOT commit or redistribute — especially if this repo
 # is ever made public. Keep your own copy locally; it is not tracked here.
+# (Exception: firmware/t2can/ is OUR ESP32 companion firmware — it is tracked.)
 # ---------------------------------------------------------------------------
 *.pv1
 *.pv0
-firmware/
+firmware/*
+!firmware/t2can/
 extract/
 extracted/
 unpacked/

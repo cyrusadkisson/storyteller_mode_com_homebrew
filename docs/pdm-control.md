@@ -118,6 +118,14 @@ automatically; it reports `0x14EF1E11[FC]`.)
   7–12. Bytes 1–6 = per-channel level, byte 7 = `FF` constant.
 - **Status** frames use `39 / C9 / F0 / F8 / FA / FB / FC / FD / FE`, with `FC`
   further sub-indexed on byte 1 (`F1`…`FC`, 12 items → per-channel feedback).
+  Within `F0`/`F8` (the digital-input frames), the 2-bit switch slots live in
+  bytes 6–7, while **bytes 4–5 are a 10-bit analog supply reading**
+  (`((b4 & 3)·256 + b5)·5/1024` V) — so that byte drifts with the rail and must
+  not be mistaken for a changing switch (decode from the ModeWifi code,
+  re-audit 2026-08-24).
+- **Fault frames:** `0x14E9111E` / `0x14E9111F` (PGN `E900`, one per PDM) are
+  short/overcurrent warnings — any non-zero in bytes 2–3 means a channel
+  faulted. (Also from the ModeWifi re-audit.)
 
 Levels observed in command bytes: `00` (off), `40`, `5C`, `7F`. The non-power-
 of-two values mean this is a **level (0x00–0x7F), not a bitfield** — consistent

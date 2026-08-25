@@ -119,7 +119,10 @@ Drain parked manual-only by owner decision.
 
 Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
 `A5`), another digital input is changing — the F0 stream is dynamic, exactly why
-copy-live-then-modify matters.
+copy-live-then-modify matters. **Resolved by re-audit (2026-08-24): not a
+switch.** His code decodes F0/F8 bytes 4–5 as a 10-bit analog supply reading:
+`((byte4 & 0x03) * 256 + byte5) * 5 / 1024` V. The `A4` → `A5` drift was the
+rail voltage tick, nothing else.
 
 ## 3. Status mux map (his, for `0x14EF111E` — supersedes our notes)
 
@@ -164,3 +167,31 @@ beats BLE" call we already made.
 
 Contact: the author offered publicly (March 2025) to share and collaborate in
 the Insiders group thread.
+
+## 6. Full re-audit (2026-08-24) — what his code actually does
+
+Every file read end-to-end. Corrections and additions to the above:
+
+- **His working transmit set is exactly three IDs**: the PDM input spoof
+  (`0x14EF111E/1F`), the A/C command (`0x19FEF903`), and the vent command
+  (`0x19FEA603`). He **never** sends Rixen `0x788`, never writes a PDM command
+  frame, and has **no dimmer code at all** — the brightness sliders in his web
+  UI have no handler behind them and his README lists dimming under "cannot".
+  So dimming is undocumented by everyone; our shadow-injection work is the only
+  path.
+- **PDM fault frames (new to us):** `0x14E9111E` / `0x14E9111F` (PGN `E900`)
+  are per-PDM **short/overcurrent warnings** — he alerts when bytes 2–3 are
+  non-zero. Free fault detection for our app.
+- **His bus runs at 500 kbps.** Ours is wire-verified 250k many times over —
+  a per-van/per-tap difference, not a conflict, but worth knowing before
+  anyone tries his firmware image as-is on our van.
+- **His AC setpoint code has a byte-order bug** (`acCommand` writes the
+  setpoint big-endian; his own captured frames and `acSetTemp` are
+  little-endian). His AC on/off/fan still work; it only confirms our LE
+  handling is the right one.
+- **Vent position nibble doesn't work** ("always full open or closed") — same
+  limitation we hit; only open/close/speed/direction are honored.
+- **His awning uses the input spoof** (PDM1 F8 byte 6 slot 3 = enable, byte 7
+  slots 2/3 = out/in, 100 ms presses). Our awning is physically removed, so
+  these stay unverified here.
+- His van has a **second roof fan at SA 0xC1** — not present on ours.
