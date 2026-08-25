@@ -343,6 +343,12 @@ Preset 1  ->  0x14EF1E11 : FC 7F 7F 7F 7F 7F 40 FF
 A companion app can implement scenes by writing one frame. The same will apply
 to Preset 2 and "chill mode" — capture each once to read off its stored levels.
 
+> **Caveat (2026-08-25):** "writing one frame" sets the levels for exactly one
+> HU cycle (~11 ms) and is then overwritten, same as any other direct output
+> write. Scenes are only durable via the **input spoof** (press the switches
+> the scene would press) or **cut-and-stand-in**. The captured preset levels
+> below are still the right *reference* for what a scene should look like.
+
 Note `0x7F` here vs `0x40` when switching a light on manually: `0x40` is the
 panel's remembered per-light default, `0x7F` is what Preset 1 stores. Both are
 just levels on the same scale.
@@ -364,8 +370,17 @@ control path:
 
 Pressing one does **not** emit a new message type. The PDM reports the input,
 the head unit runs its scene logic, and then writes the ordinary output frame
-we already decoded. **A companion app never needs to emulate a switch — it
-writes outputs directly.**
+we already decoded.
+
+> **SUPERSEDED (2026-08-24/25).** The original conclusion here — "a companion
+> app never needs to emulate a switch, it writes outputs directly" — is
+> **exactly backwards** for a parallel tap. Writing outputs directly does not
+> persist (the HU overwrites within ~11 ms) and holding them means
+> out-transmitting the head unit, which we rejected on bus-safety grounds.
+> **Emulating the switch input is the only method that persists**, because it
+> makes the HU change its own mind and hold the new state itself. See
+> `modewifi-analysis.md` §2. The corollary is the reading-light finding below:
+> a channel with no input cannot be controlled from a parallel tap at all.
 
 ## Aux1 = the owner's perimeter DC lights
 
@@ -605,6 +620,14 @@ revision of the script lied about this).
 (cabin lights were on at `0x26`). The head unit does not send on change — it
 *re-asserts its entire state every ~22 ms*. Whole bus ~450 fps.
 
+> **CORRECTION (2026-08-25, measured):** the FC frame actually runs at
+> **~91 Hz (~11 ms)**, double the rate recorded above — measured over a 6 s
+> census: `14EF1E11` 137 Hz total, of which mux `FC` is ~91 Hz and `FD` ~46 Hz.
+> Frames also arrive in bursts (sub-millisecond deltas within a burst), so
+> there is **no dependable 22 ms quiet gap to inject into**. This invalidates
+> the timing assumption behind shadow-injection-based dimming; see
+> "Dimming abandoned" below.
+
 ## Test 1 — no-op (PASSED)
 
 Sent the live frame back byte-for-byte identical
@@ -626,8 +649,10 @@ arbitrate, they never collide into bit errors.)
 ## Test 3 — shadow injection, SA 0x11 (SUCCESS)
 
 Tool: [`tools/can_shadow.py`](../tools/can_shadow.py). Listens for the head
-unit's own frame, then transmits immediately **behind** it, inside its 22 ms
-quiet gap, from SA 0x11. Payload = copy of the live frame with exactly one
+unit's own frame, then transmits immediately **behind** it, inside what was
+then believed to be a 22 ms quiet gap, from SA 0x11. (The gap is really ~11 ms
+and bursty — see the 2026-08-25 correction above; the bench test still
+succeeded because it only had to land *once*, not hold.) Payload = copy of the live frame with exactly one
 byte changed (byte 4 = Cabinlights). Timing off the observed frame keeps
 collision odds near zero — same-id/different-data overlap is the one thing on
 CAN that produces error frames.
@@ -644,11 +669,12 @@ unchanged, no restarts.
 ## What this means for the companion box (phase 3)
 
 1. **Writes must impersonate SA 0x11.** Only that address is obeyed.
-2. **Nothing persists by itself.** The head unit re-asserts every ~22 ms, so a
-   one-shot write holds for at most one cycle. To *hold* a state, the box must
-   re-inject continuously (the shadow trick, following the HU's broadcast).
-   This is also the safety net: a crashed box stops injecting and the stock
-   system re-takes full control within 22 ms, unaided. Failsafe by physics.
+2. **Nothing persists by itself.** The head unit re-asserts every ~11 ms
+   (measured 2026-08-25; ~22 ms was the original, wrong figure), so a one-shot
+   write holds for at most one cycle. Holding a state would mean injecting
+   continuously at a rate that out-runs the HU — **rejected on bus-safety
+   grounds, see "Dimming abandoned"**. The same physics is the safety net: a
+   crashed box stops transmitting and the stock system is unaffected.
 3. **Copy-then-modify is mandatory.** Every command frame carries six channels;
    only ever change the one byte you mean to, mirroring the rest of the live
    frame. Blind payload constants would switch off standing channels
@@ -669,7 +695,73 @@ complementary control method: instead of commanding outputs as the head unit,
 status frame (`0x14EF111E` mux `F0`/`F8`), set the switch's 2-bit field to
 `0b10` for ~100 ms, release — sent from the **PDM's** address (SA `0x1E`),
 which the head unit trusts for input data. The head unit then changes its own
-state and holds it in its own 45 Hz broadcast. Persistence without fighting
+state and holds it in its own ~91 Hz broadcast. Persistence without fighting
 the chatter. Full analysis: [`modewifi-analysis.md`](modewifi-analysis.md),
 including the **per-channel feedback-amps** frames (mux `F9/C9/39` and
 `0A/CA/FA`, bytes 2–7 × 0.125 A) that make an app truly stateful.
+
+## Dimming abandoned for the parallel tap (2026-08-25)
+
+Tried and removed from the companion app. Shadow injection works for a
+*momentary* change (bench Test 3 above) but cannot **hold** a level from a
+parallel tap:
+
+- The HU re-asserts `FC` at ~91 Hz, not the ~45 Hz assumed, and in bursts.
+  One injection per received frame leaves the HU's own value standing for most
+  of the duty cycle, so the lamp alternates between the old and new level —
+  observed on the van as fast flicker, at three separate injection timings.
+- Making our value dominate requires transmitting continuously at a higher
+  rate than the HU (~250 Hz was the working figure), i.e. roughly +50 % total
+  bus load, sustained, as same-id/different-data frames against the head unit.
+  That is precisely the condition this document warns produces bus errors,
+  and it is not an acceptable risk on a live vehicle bus for a comfort feature.
+
+**Decision (owner, 2026-08-25): dimming is out of scope for the parallel tap.**
+Brightness stays on the factory panel. The app shows each light's level
+read-only. If dimming is ever wanted from the app it needs the
+**cut-and-stand-in** architecture (box inline, owning the channel outright) —
+a wiring change, not a firmware change.
+
+Note this does not affect on/off: the wall-switch **input spoof** toggles
+lights with no injection at all, and the HU holds the state itself. Only the
+reading lights are unreachable that way (no physical switch on this van).
+
+## Reading lights (DO3) — unreachable from a parallel tap (2026-08-25)
+
+Measured directly. Owner toggled the reading lights ON, waited ~3 s, toggled
+OFF, during a 20 s full-bus capture (8993 frames).
+
+**Result:**
+
+- `0x14EF1E11[FC]` byte 3 (DO3) moved `00` -> `7F` -> `00`. The load was
+  commanded exactly as expected.
+- **No digital-input frame moved.** PDM1 `F0` bytes 6-7 stayed `00 00` across
+  the whole capture; PDM2 `F0`/`F8` unchanged. (PDM1 `F0` byte 5 drifted
+  `A2`->`A3`, which is the 10-bit analog supply reading, not a switch.)
+- A whole-bus diff of every id that changed payload during the window shows
+  the change carried **only** on `0x14EF1E11` (the HU's own output command).
+  The other movers are feedback-amps/analog muxes reacting to the load,
+  tank/engine telemetry, and Rixen `0x788` chatter.
+
+**Conclusion: the panel's reading-light control is internal to the head unit.**
+It never appears on CAN1 as an input, so there is nothing to impersonate. The
+output is re-asserted ~91x/second by the HU, so writing it does not persist.
+Reading lights therefore **cannot be controlled from a parallel tap** —
+this is a property of the channel, not a gap in the decode.
+
+Note the distinction, since it is easy to state wrongly:
+
+| Load | Why it is (or is not) controllable |
+|---|---|
+| A/C, roof vent | Separate J1939 nodes (SA `0x03`, `0x58`). They latch a command themselves — one frame, permanent. |
+| Cabin, garage, awning light, aux, pump, recirc | PDM outputs **with a physical switch**. Spoof the input, the HU toggles and holds it. |
+| Reading lights (DO3) | PDM output with **no input path at all**. Nothing to spoof; direct writes are overwritten in ~11 ms. |
+
+"No physical switch" is not by itself the reason — the A/C has no switch either
+and works fine. The reason is that a PDM output needs *someone* to hold it, and
+for DO3 the only holder is the head unit, which takes no external instruction.
+
+**Routes if it is ever wanted:** (1) **cut-and-stand-in** — box inline, owning
+DO3 outright; (2) spoof the **master switch** (PDM2 DI6), which per the master
+capture above does write DO3 — but master hits all four lights and flattens
+them to `0x40`, so it is an all-lights scene, not a reading-light toggle.

@@ -1,7 +1,7 @@
 load_name,pdm,pdm_sa,do,cmd_can_id,cmd_mux,cmd_byte,status_can_id,observed_value,confirmed,notes
 SolarBattBackup,PDM1,0x1E,DO1,0x14EF1E11,0xFC,1,0x14EF111E,0x7F,predicted,on at capture time
 CargoLights,PDM1,0x1E,DO2,0x14EF1E11,0xFC,2,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON diff 2026-08-11; no status echo isolated; dimmable (UI slider)"
-ReadingLights,PDM1,0x1E,DO3,0x14EF1E11,0xFC,3,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 6,7; dimmable (UI slider)"
+ReadingLights,PDM1,0x1E,DO3,0x14EF1E11,0xFC,3,0x14EF111E,0x00->0x7F,CONFIRMED,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 6,7; dimmable (UI slider). NO DIGITAL INPUT: measured 2026-08-25, a panel toggle moves DO3 with zero input-frame change, so it cannot be driven from a parallel tap (nothing to spoof; direct writes overwritten in ~11ms). See docs/pdm-control.md"
 Cabinlights,PDM1,0x1E,DO4,0x14EF1E11,0xFC,4,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON->OFF diff 2026-08-11; status echo 0x14EF111E[C9] b1 bits4-5 + b5 bit1"
 AwningLights,PDM1,0x1E,DO5,0x14EF1E11,0xFC,5,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 2,3; dimmable (UI slider)"
 RecircPump_BathLight,PDM1,0x1E,DO6,0x14EF1E11,0xFC,6,0x14EF111E,0x00->0x40,CONFIRMED,"preset1 capture 2026-08-11; owner saw the physical hot-water-circ button light up at the same instant"

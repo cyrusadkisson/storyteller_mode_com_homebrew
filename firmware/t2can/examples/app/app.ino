@@ -45,6 +45,7 @@ static const char *MDNS_NAME = "van";         // http://van.local
 #define CANB_RX GPIO_NUM_6
 
 mcp2518fd CanA(MCP2518_CS);
+SemaphoreHandle_t canMux;           // serializes ALL CanA SPI access
 WebServer server(80);
 DNSServer dns;                      // captive portal: any DNS answer -> our IP
 
@@ -100,6 +101,11 @@ static uint16_t battMin = 0xFFFF, battAh = 0;
 static uint8_t  battSoH = 0;
 static bool     seenBatt = false, seenTank = false;
 static uint8_t  acB1 = 0, acFan = 0;
+// Fan (wire-verified 2026-08-25): byte1 high nibble 0=auto, 1=manual;
+// byte2 = speed, 0x64 low / 0xC8 high. byte1 0x10 = fan-only (compressor off).
+static uint8_t  acFanSpd = 0x64;
+void sendAC(uint8_t b1);
+void sendAC(uint8_t b1, uint8_t fanSpd);
 static uint16_t acHeatRaw = 0x252F, acCoolRaw = 0x2540;
 static bool     seenAC = false;
 static uint8_t  ventSpeed = 0, ventMode = 0x40;
@@ -107,9 +113,11 @@ static float    ventT = 0;
 static bool     seenVent = false;
 static float    invAcV = 0, invHz = 0;
 static bool     seenInv = false;
+static int8_t   invCmd = -1;         // last commanded inverter state (-1 = never commanded)
 static float    ambC = 0;
 static bool     seenAmb = false;
 static uint32_t cntA = 0, cntB = 0;
+static char     lastCmd[56] = "none";   // last /api/cmd that ran, for the footer
 
 static float raw2cF(uint16_t r) { return r * 0.03125f - 273.0f; }           // J1939 temp -> °C
 static float raw2fF(uint16_t r) { return raw2cF(r) * 9.0f / 5.0f + 32.0f; } // -> °F
@@ -132,26 +140,40 @@ void spoofPress(uint8_t i) {
 
   if (s.holdrun) {
     uint32_t t0 = millis();
-    while (millis() - t0 < s.hold) { CanA.sendMsgBuf(id, 1, 0, 8, pb); delay(20); }
+    while (millis() - t0 < s.hold) {
+      xSemaphoreTake(canMux, portMAX_DELAY);
+      CanA.sendMsgBuf(id, 1, 0, 8, pb);
+      xSemaphoreGive(canMux);
+      delay(20);
+    }
   } else {
+    xSemaphoreTake(canMux, portMAX_DELAY);
     CanA.sendMsgBuf(id, 1, 0, 8, pb);
+    xSemaphoreGive(canMux);
     delay(s.hold);
   }
   buf[s.byte] &= ~clearM;
+  xSemaphoreTake(canMux, portMAX_DELAY);
   CanA.sendMsgBuf(id, 1, 0, 8, buf);
+  xSemaphoreGive(canMux);
   Serial.printf("spoof %s\n", s.name);
 }
 
-void sendAC(uint8_t b1) {
-  uint8_t ac[8] = {0x01, b1, 0x64,
+void sendAC(uint8_t b1) { sendAC(b1, acFanSpd); }
+void sendAC(uint8_t b1, uint8_t fanSpd) {
+  uint8_t ac[8] = {0x01, b1, fanSpd,
                    (uint8_t)acHeatRaw, (uint8_t)(acHeatRaw >> 8),
                    (uint8_t)acCoolRaw, (uint8_t)(acCoolRaw >> 8), 0x00};
+  xSemaphoreTake(canMux, portMAX_DELAY);
   CanA.sendMsgBuf(ID_AC_CMD, 1, 0, 8, ac);
+  xSemaphoreGive(canMux);
 }
 
 void sendVent(uint8_t speed, uint8_t mode) {
   uint8_t v[8] = {0x02, 0x15, speed, mode, 0x00, 0x00, 0x00, 0x00};
+  xSemaphoreTake(canMux, portMAX_DELAY);
   CanA.sendMsgBuf(ID_VENT_CMD, 1, 0, 8, v);
+  xSemaphoreGive(canMux);
 }
 
 void sendInv(bool on) {
@@ -163,6 +185,17 @@ void sendInv(bool on) {
   m.data[1] = on ? 0x01 : 0x00;
   twai_transmit(&m, pdMS_TO_TICKS(500));
 }
+
+// ----- light channels (read-only levels; control is by switch spoof) --------
+// Dimming was removed 2026-08-25: it required continuously out-transmitting
+// the head unit, which our own bus-safety rules forbid. See the note in
+// docs/pdm-control.md. Levels here are STATUS ONLY, read off the HU's own
+// broadcasts.
+static const uint8_t LIGHT_DO[4] = {4, 2, 3, 5};   // cabin, garage, reading, awning
+// Wall-switch spoof index per light, -1 = no physical switch. Reading lights
+// are screen-only on this van, so with injection gone they are status-only.
+static const int8_t  LIGHT_SW[4] = {0, 1, -1, 5};
+static int lvl2pct(uint8_t l) { return (l * 100 + 63) / 127; }
 
 // ----- web UI ------------------------------------------------------------------
 #include "webui.h"
@@ -180,8 +213,11 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
 
   if (id == ID_PDM1_CMD || id == ID_PDM2_CMD) {          // HU -> PDM levels
     uint8_t p = (id == ID_PDM2_CMD);
-    if (b[0] == 0xFC)      for (int ch = 1; ch <= 6; ch++) doLevel[p][ch] = b[ch];
-    else if (b[0] == 0xFD) for (int ch = 7; ch <= 12; ch++) doLevel[p][ch - 6] = b[ch - 6];
+    if (b[0] == 0xFC) {
+      for (int ch = 1; ch <= 6; ch++) doLevel[p][ch] = b[ch];
+
+    }
+    else if (b[0] == 0xFD) for (int ch = 7; ch <= 12; ch++) doLevel[p][ch] = b[ch - 6];
     return;
   }
   if (id == ID_PDM1_STAT || id == ID_PDM2_STAT) {        // PDM -> HU
@@ -204,7 +240,7 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
   }
   if (id == ID_AC_STAT) {                                // AC echoes our command
     seenAC = true;
-    acB1 = b[1]; acFan = b[2];
+    acB1 = b[1]; acFan = b[2]; acFanSpd = b[2];
     acHeatRaw = b[3] | (b[4] << 8);
     acCoolRaw = b[5] | (b[6] << 8);
     return;
@@ -248,7 +284,7 @@ static char jbuf[2048];
 void sendState() {
   char *w = jbuf;
   int left = sizeof jbuf;
-  int n = snprintf(w, left, "{");
+  int n = snprintf(w, left, "{\"build\":\"%s %s\",", __DATE__, __TIME__);
 
   // helper macro: append formatted
   #define J(...) do { w += n; left -= n; if (left <= 0) goto out; n = snprintf(w, left, __VA_ARGS__); } while (0)
@@ -260,9 +296,26 @@ void sendState() {
     J("\"soc\":%.1f,\"batt\":\"%s\",\"battV\":%.2f,\"battA\":%.2f,", soc, bt, battV, battA);
   } else J("\"soc\":null,\"batt\":\"no CAN2 battery frames\",");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
-  if (seenInv) J("\"invtext\":\"shore/inverter %.0f V %.1f Hz\",", invAcV, invHz);
+  if (seenInv) J("\"invtext\":\"AC line %.0f V %.1f Hz\",", invAcV, invHz);
   else J("\"invtext\":\"\",");
+  {
+    // AC line presence is the truth signal; our last command is only a
+    // fallback before any AC frame arrives. Charging while AC is live means
+    // the source is shore power, not the inverter.
+    bool acLive = seenInv && invAcV > 90.0f;
+    int invShown = acLive ? 1 : (invCmd >= 0 ? invCmd : -1);
+    J("\"invon\":%d,\"aclive\":%d,\"shore\":%d,",
+      invShown, acLive ? 1 : 0, (acLive && battA > 0.5f) ? 1 : 0);
+  }
 
+  J("\"lights\":[");
+  for (int k = 0; k < 4; k++) {
+    uint8_t ch = LIGHT_DO[k];
+    J("%s{\"on\":%d,\"pct\":%d,\"amps\":%.2f,\"ctl\":%d}", k ? "," : "",
+      doLevel[0][ch] > 0 ? 1 : 0, lvl2pct(doLevel[0][ch]), doAmps[0][ch],
+      LIGHT_SW[k] >= 0 ? 1 : 0);
+  }
+  J("],");
   J("\"sw\":[");
   for (int i = 0; i < 6; i++) J("%s%d", i ? "," : "", doLevel[SW_OUT_PDM[i]][SDO(i)] > 0 ? 1 : 0);
   J("],\"amps\":[");
@@ -276,7 +329,8 @@ void sendState() {
     else switch (op) { case 0: mode = "off"; break; case 1: mode = "cool"; break;
                        case 2: mode = "heat"; break; default: mode = "on"; }
     J("\"acmode\":\"%s\",\"coolsp\":%d,", mode, (int)lroundf(raw2fF(acCoolRaw)) - 2);  // panel deadband: wire-2
-    J("\"heatsp\":%d,", (int)lroundf(raw2fF(acHeatRaw)) + 2);
+    J("\"heatsp\":%d,\"acfan\":%d,\"acfanspd\":%d,",
+      (int)lroundf(raw2fF(acHeatRaw)) + 2, (acB1 >> 4) & 0x0F, acFan);
   } else J("\"acmode\":\"?\",\"coolsp\":null,\"heatsp\":null,");
 
   if (seenVent) {
@@ -291,12 +345,22 @@ void sendState() {
   else J("\"fresh\":null,\"gray\":null,");
 
   {
-    char ft[160];
-    snprintf(ft, sizeof ft, "frames A %lu / B %lu%s%s",
-             (unsigned long)cntA, (unsigned long)cntB,
+    char ft[200];
+    snprintf(ft, sizeof ft, "frames A %lu / B %lu  |  last: %s%s%s",
+             (unsigned long)cntA, (unsigned long)cntB, lastCmd,
              (faultB[0][0] | faultB[0][1]) ? "  PDM1 FAULT" : "",
              (faultB[1][0] | faultB[1][1]) ? "  PDM2 FAULT" : "");
     J("\"foot\":\"%s\"", ft);
+  }
+  {
+    // Raw HU level bytes, both PDMs, DO1..12 in order — the debug view that
+    // settles "which byte actually moved" without a second CAN logger.
+    char db[200];
+    int off = snprintf(db, sizeof db, "levels P1:");
+    for (int ch = 1; ch <= 12; ch++) off += snprintf(db + off, sizeof db - off, " %02X", doLevel[0][ch]);
+    off += snprintf(db + off, sizeof db - off, "  P2:");
+    for (int ch = 1; ch <= 12; ch++) off += snprintf(db + off, sizeof db - off, " %02X", doLevel[1][ch]);
+    J(",\"dbg\":\"%s\"", db);
   }
   J("}");
 out:
@@ -307,6 +371,7 @@ out:
 
 // ----- command endpoint ---------------------------------------------------------
 void sendOK(const char *what) {
+  snprintf(lastCmd, sizeof lastCmd, "%s @ %lus", what, (unsigned long)(millis() / 1000));
   Serial.printf("cmd: %s\n", what);
   server.send(200, "application/json", "{\"ok\":true}");
 }
@@ -323,8 +388,17 @@ void onCmd() {
     if (m == "on")        { sendAC(0x01); sendOK("ac on"); }
     else if (m == "off")  { sendAC(0x00); sendOK("ac off"); }
     else if (m == "comp") { sendAC(0x04); sendOK("ac compressor off"); }
-    else if (m == "heat") { sendAC(0x02); sendOK("ac heat (UNVERIFIED)"); }
+    else if (m == "heat") { sendAC(0x02); sendOK("ac heat"); }
     else server.send(400, "text/plain", "bad mode");
+  } else if (c == "acfan") {
+    // Wire-verified 2026-08-25: byte1 high nibble 0=auto/1=manual, byte2 speed
+    // (0x64 low, 0xC8 high). Operating-mode nibble is preserved either way.
+    String m = server.arg("m");
+    uint8_t opmode = acB1 & 0x0F;
+    if (m == "auto")      { acFanSpd = 0x64; sendAC(opmode, acFanSpd); sendOK("ac fan auto"); }
+    else if (m == "low")  { acFanSpd = 0x64; sendAC(0x10 | opmode, acFanSpd); sendOK("ac fan low"); }
+    else if (m == "high") { acFanSpd = 0xC8; sendAC(0x10 | opmode, acFanSpd); sendOK("ac fan high"); }
+    else server.send(400, "text/plain", "bad fan mode");
   } else if (c == "cool") {
     int d = server.arg("d").toInt();           // +/- 1 °F on the DISPLAYED value
     int8_t step = (d >= 0) ? 1 : -1;
@@ -334,26 +408,29 @@ void onCmd() {
     sendAC(acB1 ? acB1 : 0x01);
     sendOK("cool setpoint");
   } else if (c == "vent") {
+    // Any combination of open/dir/speed args folds into one command frame.
+    bool used = false;
     if (server.hasArg("open")) {
       bool o = server.arg("open") == "1";
-      ventMode = (ventMode & ~(0x10)) | 0x40;   // enable bit stays; open bit follows
-      if (o) ventMode |= 0x10;
+      ventMode = (ventMode & ~0x10) | 0x40 | (o ? 0x10 : 0);  // enable stays; open bit follows
       if (!o) ventSpeed = 0;
-      sendVent(ventSpeed, ventMode);
-      sendOK(o ? "vent open" : "vent close");
-    } else if (server.hasArg("speed")) {
-      ventSpeed = (uint8_t)constrain(server.arg("speed").toInt(), 0, 255);
-      sendVent(ventSpeed, ventMode);
-      sendOK("vent speed");
-    } else if (server.hasArg("dir")) {
+      used = true;
+    }
+    if (server.hasArg("dir")) {
       if (server.arg("dir") == "1") ventMode |= 0x01; else ventMode &= ~0x01;
       ventMode |= 0x40;
-      sendVent(ventSpeed, ventMode);
-      sendOK("vent direction");
-    } else server.send(400, "text/plain", "bad vent");
+      used = true;
+    }
+    if (server.hasArg("speed")) {
+      ventSpeed = (uint8_t)constrain(server.arg("speed").toInt(), 0, 255);
+      used = true;
+    }
+    if (used) { sendVent(ventSpeed, ventMode); sendOK("vent"); }
+    else server.send(400, "text/plain", "bad vent");
   } else if (c == "inv") {
     bool on = server.arg("on") == "1";
     sendInv(on);
+    invCmd = on ? 1 : 0;
     sendOK(on ? "inverter on" : "inverter off");
   } else {
     server.send(400, "text/plain", "unknown");
@@ -366,6 +443,7 @@ void setup() {
   delay(300);
   Serial.println("companion app: boot");
 
+  canMux = xSemaphoreCreateMutex();
   SPI.begin(MCP2518_SCLK, MCP2518_MISO, MCP2518_MOSI, MCP2518_CS);
   if (CanA.begin(CAN20_250KBPS, MCP2518FD_40MHz) == CAN_OK) Serial.println("canA: CAN1 250k OK");
   else Serial.println("canA: init FAIL");
@@ -385,9 +463,13 @@ void setup() {
   if (MDNS.begin(MDNS_NAME)) Serial.printf("mDNS: http://%s.local\n", MDNS_NAME);
 
   server.on("/", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-store");   // phones LOVE stale pages
     server.send_P(200, "text/html", INDEX_HTML);
   });
-  server.on("/api/state", HTTP_GET, sendState);
+  server.on("/api/state", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-store");
+    sendState();
+  });
   server.on("/api/cmd", HTTP_POST, onCmd);
   server.onNotFound([]() {           // captive-portal probes land on the UI
     server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/");
@@ -395,18 +477,40 @@ void setup() {
   });
   server.begin();
   Serial.println("http: 80 ready");
+
+  // Core 0 belongs to the WiFi stack (priority 23, unbeatable). Injection
+  // timing must not compete with it: CAN owns core 1, above the web server.
+  xTaskCreatePinnedToCore(canTask, "can", 4096, NULL, 5, NULL, 1);
+  Serial.println("can task: core 1 (off the WiFi core)");
+}
+
+// Shadow injection has to answer the HU inside its ~22 ms gap. Sharing the
+// Arduino loop with the web server made injections land late or not at all,
+// and the light averaged between our level and the HU's -> visible flicker.
+// The CAN work therefore owns core 0; the web server keeps core 1.
+void canTask(void *) {
+  for (;;) {
+    bool worked = false;
+    for (int i = 0; i < 16; i++) {          // drain, don't sip
+      uint8_t len, buf[8];
+      uint32_t id;
+      xSemaphoreTake(canMux, portMAX_DELAY);
+      bool have = (CanA.checkReceive() == CAN_MSGAVAIL);
+      if (have) { CanA.readMsgBuf(&len, buf); id = CanA.getCanId(); }
+      xSemaphoreGive(canMux);
+      if (!have) break;
+      cntA++;
+      onCanAFrame(id, buf, len);
+      worked = true;
+    }
+    twai_message_t msg;
+    while (twai_receive(&msg, 0) == ESP_OK) { cntB++; onCanBFrame(msg); worked = true; }
+    if (!worked) vTaskDelay(1);
+  }
 }
 
 void loop() {
   server.handleClient();
   dns.processNextRequest();
-
-  if (CanA.checkReceive() == CAN_MSGAVAIL) {
-    uint8_t len, buf[8];
-    CanA.readMsgBuf(&len, buf);
-    cntA++;
-    onCanAFrame(CanA.getCanId(), buf, len);
-  }
-  twai_message_t msg;
-  while (twai_receive(&msg, 0) == ESP_OK) { cntB++; onCanBFrame(msg); }
+  vTaskDelay(1);
 }

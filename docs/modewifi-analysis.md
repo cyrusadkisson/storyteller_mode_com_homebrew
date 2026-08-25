@@ -41,8 +41,9 @@ verify per-van.
 ## 2. His control strategy — the input spoof (solves persistence)
 
 We proved the PDM obeys output commands **only from the head unit (SA 0x11)**
-and that one-shot writes are overwritten by the HU's ~45 Hz re-broadcast
-within 22 ms. His solution is to never command outputs at all:
+and that one-shot writes are overwritten by the HU's re-broadcast within
+~11 ms (measured 2026-08-25; the ~45 Hz / 22 ms figure recorded earlier was
+wrong — mux `FC` actually runs at ~91 Hz). His solution is to never command outputs at all:
 
 1. The PDM broadcasts **digital-input status** frames: `0x14EF111E` mux
    **`F0`** (DI1–6) and **`F8`** (DI7–12), carrying the wall-switch states as
