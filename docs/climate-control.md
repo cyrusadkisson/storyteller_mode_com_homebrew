@@ -105,6 +105,14 @@ the ~30 s delay is its own anti‑short‑cycle timer, not a command.
 > fan speed and cabin temperature — but **cannot show whether the compressor is
 > actually engaged.**
 
+**Correction 2026-08-24:** the compressor **is** independently controllable on
+this van. The A/C screen has a separate compressor "AC OFF"/"AC ON" switch, and
+pressing it changes `0x19FEF903` **byte 1**: `0x01` = A/C on (compressor runs),
+`0x04` = compressor AC OFF (unit stays on, cooling element off), `0x00` = unit
+off. The status echo `0x19FFE258` mirrors byte 1, so compressor state *is*
+readable (unlike the earlier conclusion). The earlier "invisible" conclusion
+likely missed this because the compressor-on/off UI was not exercised.
+
 ### CONFIRMED: the panel displays 2 °F lower than it transmits
 
 **Verified live 2026‑08‑12.** With the A/C running, the panel displayed a cool

@@ -229,3 +229,16 @@ low fan. Fan low/high/auto button mapping still pending (capture
 the screen not updating; the power-flow confirms it works (idle draw rises, and
 the A/C runs off it). ModeWifi has **no inverter control** — his HVAC is fed via
 PDM2 output DO9 (`HVAC_POWER`), a DC unit, unlike our 120 V inverter-fed roof.
+
+**Same-session follow-ups (2026-08-24):**
+
+- **Vent verified working** — `0x19FEA603` is an 8-byte frame
+  `02 15 <speed> <mode>` (instance `02`, `15` const, speed 0–255, mode = bit6
+  enable + bit4 open + bit0 air-in). A first attempt sent it **without the
+  leading `02` byte** (7 bytes) and the fan did not respond at all — the same
+  offset trap as the A/C command. With the full frame the fan status
+  (`0x19FEA758`) echoed the sequence exactly.
+- **Compressor is independently controllable** — the A/C screen's compressor
+  "AC OFF" switch writes `0x19FEF903` byte 1 = `0x04` (vs `0x01` = on,
+  `0x00` = off), and `0x19FFE258` echoes it. This corrects the earlier
+  "compressor is autonomous and invisible" conclusion in climate-control.md.
