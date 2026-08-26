@@ -190,7 +190,7 @@ below. The stock system is untouched and remains the fallback.
 
 | Works | How |
 |---|---|
-| Cabin, garage, awning light, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
+| Cabin, garage, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
 | Roof A/C — off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write, echoed back by the A/C |
 | Roof vent — lid, fan, airflow, speed | direct write, echoed by the vent |
 | Inverter | single-shot latch on CAN2 |
@@ -206,7 +206,16 @@ below. The stock system is untouched and remains the fallback.
 - **Rixen heater writes** — the heater accepts them in ~300 ms, but the head
   unit reverts them within ~5 s. Holding one would oscillate a diesel burner's
   setpoint, so the app reads the heater and does not command it.
-- **Sink drain, awning motor** — owner decision / hardware removed from this van.
+- **Sink drain** — hold-to-run, and a parallel tap cannot sustain a
+  hold-to-run switch: the PDM re-broadcasts it as released ~25 times a second,
+  so a spoofed press only ever flickers. Left as a manual control by owner
+  decision.
+- **Awning lights and motor** — the awning is physically removed from this
+  van, so neither has been confirmed working. The app exposes the light as a
+  switch and the head unit's command byte responds, but no light exists to
+  see; on a van that has one, verify it before trusting it. The motor protocol
+  is decoded but untested, and it **latches** — anything driving it needs a
+  watchdog that writes zero.
 
 All of those would need an **inline** ("cut-and-stand-in") controller that owns
 the channel outright, rather than a parallel tap.
@@ -220,8 +229,11 @@ charger and shore power. Both are 250 kbit/s. A companion device needs **both**
 [`hardware-and-tap.md`](docs/hardware-and-tap.md) for the tap and
 [`energy-can2.md`](docs/energy-can2.md) for the energy bus.
 
-Every claim is labelled by how strongly it is supported — `CONFIRMED` means
-observed on the wire, `predicted` means derived but untested. See
+Every claim is labelled by how strongly it is supported:
+`CONFIRMED` means the frame was observed **and** the load was seen to respond;
+`CONFIRMED-FRAME` means the frame is certain but the load could not be observed
+(the awning channels — the hardware is absent from this van); `predicted` means
+derived from the firmware but untested. See
 [`data/pdm_channels.csv`](data/pdm_channels.csv).
 
 [`DeviceInformationAll.pbuff`]: docs/signal-dictionary.md

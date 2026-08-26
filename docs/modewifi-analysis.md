@@ -87,7 +87,7 @@ van** — all of this must be diff-confirmed on our own captures before use.
   ~0.5 s and commanded its own DO4 from `0x00` to `0x13` and held it; the cabin
   light turned on. The release frame (slot cleared) is indistinguishable from
   the PDU's own baseline F0 stream — no extra bus footprint.
-**Four switches now verified against the live van (clean toggles, 2026-08-24):**
+**Verified against the live van (clean toggles):**
 
 | Switch | Frame | Byte | Slot | Press value | His table |
 |---|---|---|---|---|---|
@@ -97,15 +97,17 @@ van** — all of this must be diff-confirmed on our own captures before use.
 | Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, hold-to-run, **parked manual** |
 | Aux | PDM2 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 — exterior perimeter lighting |
 | Recirc | PDM1 F0 | 7 | 2 (bits 4–5) | `0x20` | ✓ DI1 — momentary; HU auto-timer ~10 s |
-| Awning light | PDM1 F0 | 7 | 3 (bits 6–7) | `0x80` | ✓ DI5 — toggle; verified w/o awning deployed |
+| Awning light | PDM1 F0 | 7 | 3 (bits 6–7) | `0x80` | DI5 — **UNCONFIRMED.** The awning and its lights are physically absent from this van, so only the head unit's DO5 level byte can be watched; nothing can be seen to switch. |
 
-Every slot so far matches his table byte-for-byte — his van ≠ this van was the
-open question, and the answer so far is "no difference." Input-spoof round-trip
-also proven: spoofed press turned the cabin on, a second press turned it off,
-both directions held by the HU's own re-broadcast.
+Every slot checked so far matches his table byte-for-byte — his van ≠ this van
+was the open question, and the answer so far is "no difference." Input-spoof
+round-trip also proven: a spoofed press turned the cabin light on, a second
+press turned it off, both directions held by the HU's own re-broadcast.
 
-Remaining unverified on this van: recirc, awning light, awning enable/out/in,
-Aux. (An earlier mis-toggle capture was discarded, not trusted.)
+**Unconfirmed on this van:** the awning light, and awning enable / out / in.
+The awning is physically removed, so there is no load to observe — the slot
+assignments are taken from his table and from the head unit's own command
+bytes, not from anything switching. Treat them as predicted.
 
 **Hold-to-run limitation (2026-08-24, wire-verified):** the input-spoof cannot
 sustain a *hold-to-run* switch on this van. The sink drain (PDM2 F8, byte 6,

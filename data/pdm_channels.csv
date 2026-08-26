@@ -3,9 +3,9 @@ SolarBattBackup,PDM1,0x1E,DO1,0x14EF1E11,0xFC,1,0x14EF111E,0x7F,predicted,on at 
 CargoLights,PDM1,0x1E,DO2,0x14EF1E11,0xFC,2,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON diff 2026-08-11; no status echo isolated; dimmable (UI slider)"
 ReadingLights,PDM1,0x1E,DO3,0x14EF1E11,0xFC,3,0x14EF111E,0x00->0x7F,CONFIRMED,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 6,7; dimmable (UI slider). NO DIGITAL INPUT: measured 2026-08-25, a panel toggle moves DO3 with zero input-frame change, so it cannot be driven from a parallel tap (nothing to spoof; direct writes overwritten in ~11ms). See docs/pdm-control.md"
 Cabinlights,PDM1,0x1E,DO4,0x14EF1E11,0xFC,4,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON->OFF diff 2026-08-11; status echo 0x14EF111E[C9] b1 bits4-5 + b5 bit1"
-AwningLights,PDM1,0x1E,DO5,0x14EF1E11,0xFC,5,0x14EF111E,0x00->0x40,CONFIRMED,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 2,3; dimmable (UI slider)"
+AwningLights,PDM1,0x1E,DO5,0x14EF1E11,0xFC,5,0x14EF111E,0x00->0x40,CONFIRMED-FRAME,"OFF->ON diff 2026-08-11; status 0x14EF111E[C9] b1 bits 2,3; dimmable (UI slider). The awning and its lights are PHYSICALLY ABSENT from this van: the frame is confirmed, the load has never been seen to switch."
 RecircPump_BathLight,PDM1,0x1E,DO6,0x14EF1E11,0xFC,6,0x14EF111E,0x00->0x40,CONFIRMED,"preset1 capture 2026-08-11; owner saw the physical hot-water-circ button light up at the same instant"
-AwningEnabled,PDM1,0x1E,DO7,0x14EF1E11,0xFD,1,0x14EF111E,0x00->0x7F,CONFIRMED,"the awning ARM. Must be set before the motor will run. Latching - stayed 0x7F after the sequence."
+AwningEnabled,PDM1,0x1E,DO7,0x14EF1E11,0xFD,1,0x14EF111E,0x00->0x7F,CONFIRMED-FRAME,"the awning ARM. Must be set before the motor will run. Latching - stayed 0x7F after the sequence. Awning physically absent from this van; frame confirmed, effect never observed."
 ,PDM1,0x1E,DO8,0x14EF1E11,0xFD,2,0x14EF111E,0x00,unknown,not named in firmware dictionary
 ,PDM1,0x1E,DO9,0x14EF1E11,0xFD,3,0x14EF111E,0x00,unknown,not named in firmware dictionary
 ExhaustFan,PDM1,0x1E,DO10,0x14EF1E11,0xFD,4,0x14EF111E,0x7F,standing-feed,"ExhaustFan. No panel control per owner. Reads 0x7F constantly — standing power feed, not a command channel."
@@ -15,7 +15,7 @@ WaterPump,PDM1,0x1E,DO12,0x14EF1E11,0xFD,6,0x14EF111E,0x00->0x7F,CONFIRMED,"OFF-
 GalleyFanSpeed,PDM2,0x1F,DO2,0x14EF1F11,0xFC,2,0x14EF111F,0x5C-0x5E,standing-feed,"GalleyFanSpeed. No panel control per owner. Reads 0x60 and drifts. Standing feed / autonomous — do not write."
 Refrigerator,PDM2,0x1F,DO3,0x14EF1F11,0xFC,3,0x14EF111F,0x7F,standing-feed,"Refrigerator. NO panel control — owner operates it with a manual dial. Reads 0x7F constantly: this is a STANDING POWER FEED, not a command channel. Do not write."
 ,PDM2,0x1F,DO4,0x14EF1F11,0xFC,4,0x14EF111F,0x7F,unknown,not named in firmware dictionary
-AwningMotor,PDM2,0x1F,DO5,0x14EF1F11,0xFC,5,0x14EF111F,0x00/0x7F/0x80,CONFIRMED,"BIDIRECTIONAL motor. 0x7F=out (+127) 0x80=in (-128 twos complement) 0x00=stop. LATCHING toggle - press on, press again off; value persists until cleared. Gated by DO7 AwningEnabled. Not in the firmware dictionary; found by capture. Matches SetPositionCommandMode in PDM-Manager."
+AwningMotor,PDM2,0x1F,DO5,0x14EF1F11,0xFC,5,0x14EF111F,0x00/0x7F/0x80,CONFIRMED-FRAME,"Awning physically absent from this van; frame confirmed, motor never observed moving. BIDIRECTIONAL motor. 0x7F=out (+127) 0x80=in (-128 twos complement) 0x00=stop. LATCHING toggle - press on, press again off; value persists until cleared. Gated by DO7 AwningEnabled. Not in the firmware dictionary; found by capture. Matches SetPositionCommandMode in PDM-Manager."
 ,PDM2,0x1F,DO6,0x14EF1F11,0xFC,6,0x14EF111F,0x00,unknown,not named in firmware dictionary
 TankMonitorPWR,PDM2,0x1F,DO7,0x14EF1F11,0xFD,1,0x14EF111F,0x7F,predicted,corroborated by live tank frames SA 0xAF
 SwitchPower,PDM2,0x1F,DO8,0x14EF1F11,0xFD,2,0x14EF111F,0x7F,predicted,reads on
