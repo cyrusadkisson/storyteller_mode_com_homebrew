@@ -36,10 +36,19 @@
 #include "pin_config.h"
 #include "driver/twai.h"
 
-// ----- WiFi AP (change to taste) ------------------------------------------
+// ----- WiFi AP ---------------------------------------------------------------
+// CHANGE THE PASSWORD BEFORE YOU FLASH THIS. It is in the public repo, so the
+// default is not a secret -- anyone within radio range who has read the source
+// can join and operate the van's lights, pump, A/C and vent. There is no
+// screen or reset button on this board, so the credentials are set here at
+// build time; pick something and write it down.
 static const char *AP_SSID = "VanCompanion";
-static const char *AP_PASS = "storyteller";   // 8+ chars required by WPA2
+static const char *AP_PASS = "storyteller";   // <-- CHANGE ME (8+ chars, WPA2)
 static const char *MDNS_NAME = "van";         // http://van.local
+
+#if 1   // delete this guard once you have set your own password above
+#warning "Using the default AP password from the public repo -- change AP_PASS."
+#endif
 
 #define CANB_TX GPIO_NUM_7
 #define CANB_RX GPIO_NUM_6

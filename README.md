@@ -1,14 +1,17 @@
 # storyteller_mode_com_homebrew
 
-A homebrew project to build a better, phone-friendly interface for the
-**Storyteller Overland (MY24) "MODE" van** — and, along the way, to document how
-the stock system actually works.
+A homebrew project to control a **Storyteller Overland (MY24) "MODE" van** from
+a phone — and, along the way, to document how the stock system actually works.
 
-The factory touchscreen is slow and unintuitive. Rather than modify the
-locked/signed factory firmware (risky — the same computer runs the van's DC
-electrical system), this project builds a **parallel companion controller** that
-speaks the van's own control bus, leaving the stock system fully intact as a
-fallback.
+The factory panel is fixed in the galley. This adds a second way in: a
+**parallel companion controller** that speaks the van's own control bus, so
+lights, water pump, roof A/C, vent and inverter can be operated from a phone
+anywhere in or around the van, and battery, tank and temperature readings can
+be seen without walking to the screen.
+
+It does not modify the locked, signed factory firmware — that would be risky,
+since the same computer runs the van's DC electrical system. The stock panel
+keeps working exactly as it did and remains the fallback.
 
 ---
 
@@ -90,6 +93,13 @@ The companion controller is a **LILYGO T-2CAN-FD** (ESP32-S3, two independent
 CAN interfaces) that taps both buses and serves a phone web UI over its own
 WiFi access point. The stock firmware is never modified — **no flashing, no
 brick risk.** See [`hardware-and-tap.md`](docs/hardware-and-tap.md).
+
+> **Change the AP password before you flash.** The board has no screen or reset
+> button, so the SSID and password are compiled in
+> ([`app.ino`](firmware/t2can/examples/app/app.ino), top of file) and the
+> default is published in this repo. Anyone in radio range who has read the
+> source could otherwise join and operate the van. The build prints a warning
+> until you change it.
 
 ## Repo layout
 
