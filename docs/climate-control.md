@@ -245,6 +245,41 @@ Close transit, fully timed:
 
 Open transit: ~10–11 s, measured on two independent runs.
 
+### The "in motion" flag LAGS the command by ~4 s (2026-08-26)
+
+Visible in both runs above but not previously called out, and it caused two
+app bugs:
+
+```
+open  command at 0.00  ->  MOVING at 3.60   (3.6 s)
+close command at 38.78 ->  MOVING at 42.89  (4.1 s)
+```
+
+**For ~4 s after a lid command the vent still reports its OLD position, with
+bit 3 clear** — indistinguishable from "settled" unless you track that you just
+commanded it. Any logic that mirrors the reported position into its own command
+state will silently undo the command, and the next command sent (composed from
+that state) drives the lid the wrong way. Observed twice: a fan-on closed an
+open vent, and an airflow flip reopened a closing one.
+
+Consequences for anything driving this vent:
+
+1. Treat the lid as **three states** — closed / moving / open — not a boolean.
+2. Adopt the reported position **only when settled**, and treat the ~4 s after
+   your own command as "moving" even though the vent does not say so yet.
+3. Compose the mode byte **per command** from discrete state (lid, direction).
+   Carrying one shared mutable mode word means every command re-sends whatever
+   lid/direction bits happen to be in it.
+
+### Fan speed byte 2 — practical range
+
+The protocol range is 0-255 and the panel was observed sending up to `0xB9`
+(185). The fan stops responding above roughly **200**, so the app's slider is
+capped there. Note also that **the setpoint is not on the bus when the fan is
+off**: the command frame is fire-once and never re-broadcast, and status byte 2
+reads `00`. A companion app can only learn the speed while the fan runs, or
+remember what it set.
+
 ## Still open
 
 - `0x19FDE203` (Vent Control 2) — **still never observed**, despite a session
@@ -335,3 +370,62 @@ units, so 78 °F → 25.6 °C → 78.08 °F.
 
 **The deadband is now observed, not inferred.** Nothing further outstanding on
 the setpoint encoding.
+
+## Rixen writes ARE accepted — the obstacle is persistence (2026-08-26)
+
+Earlier notes recorded that the Rixen target "was never accepted" when we
+transmitted `0x788[01]`. **That was wrong**, and the error was in the testing,
+not the protocol: nobody watched the ~3 s window before the head unit reverted
+the value.
+
+Measured with a single frame (`cansend can0 788#010B010000000000`, target
+80.1 °F) against a `candump` of `0x724` + `0x788`:
+
+```
+t=2.70s   we send target 80.1 F
+t=3.00s   heater ACCEPTS -> 0x724 target reads 80.1 F   (~300 ms)
+t=5.63s   head unit re-asserts 78.1 F
+t=6.00s   heater reverts  -> 0x724 target reads 78.1 F
+```
+
+Conclusions:
+
+- **The Rixen does not filter by sender.** Unlike the PDM (which obeys only
+  SA 0x11), it acted on our frame immediately. Our decode and framing are
+  correct as documented.
+- **The head unit continuously re-asserts the heater's whole state.** Each
+  `0x788` sub-command repeats roughly every **5-6 s**, staggered rather than in
+  one burst (measured over 24 s: 12 bursts, mean 2.18 s between bursts, each
+  carrying one or two sub-commands). The command frame is NOT fire-once, unlike
+  the roof vent's `0x19FEA603`.
+- A one-shot write therefore holds for ~3 s. Holding a value means contending
+  with the head unit indefinitely.
+
+### Why the app stays read-only
+
+Injection at ~1-2 Hz would be cheap on bus load (unlike PDM dimming's ~250 Hz)
+— but the steady state is **contention, not takeover**: our value and the head
+unit's alternate every few seconds. On a lighting channel that is flicker; on a
+**diesel burner** it is a setpoint oscillating several times a minute, and the
+Rixen's internal hysteresis and minimum-run behaviour are **not characterised**
+by us at all. Short-cycling a combustion heater is a wear and safety question
+we cannot bound from the bus.
+
+**Decision (owner, 2026-08-26): Rixen is read-only in the companion app.**
+Real control would need **cut-and-stand-in** (box inline, presenting one
+coherent setpoint), never parallel injection.
+
+### What the app reads
+
+| Source | Field |
+|---|---|
+| `0x724` b0-1 | current cabin temp (x0.01 °C) |
+| `0x724` b2-3 | target (x0.1 °C) — no deadband; the Rixen gets the panel's number unmodified |
+| `0x724` b6 bit 3 | calling for heat |
+| `0x788[02]` | heater fan |
+| `0x788[03]` | furnace |
+| `0x788[06]` | hot water |
+
+Live sample decoded 2026-08-26: current 83.0 °F, target 78.1 °F, all outputs
+off; `0x788[0C]` ambient relay matched `0x724` current to the hundredth,
+independently confirming both decodes.

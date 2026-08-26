@@ -67,6 +67,14 @@ static const uint32_t ID_DC2        = 0x19FFFC46UL;  // battery temp / SoC / tim
 static const uint32_t ID_DC3        = 0x19FFFB46UL;  // battery SoH / Ah remaining
 static const uint32_t ID_INV_CMD    = 0x19FFD3F2UL;  // inverter on/off (we TX, CAN2)
 static const uint32_t ID_INV_AC     = 0x19FFD7E1UL;  // inverter/shore AC line status
+// Rixen hydronic heater: standard 11-bit ids, not J1939.
+// READ-ONLY BY DESIGN. Writes are accepted by the heater (verified 2026-08-26:
+// a target change took effect in ~300 ms) but the head unit re-asserts every
+// sub-command every ~5-6 s, so holding a value would mean contending with it
+// indefinitely -- an oscillating setpoint on a DIESEL BURNER. Not worth it for
+// a comfort feature; real control needs cut-and-stand-in. Do not add writes.
+static const uint32_t ID_RIX_STATUS = 0x724UL;      // temps + flags
+static const uint32_t ID_RIX_CMD    = 0x788UL;      // HU's command stream (we listen)
 
 // ----- switch table (verified 2026-08-24, matches ModeWifi byte-for-byte) ---
 struct Sw { uint8_t pdm; uint8_t mux; uint8_t byte; uint8_t shift;
@@ -108,8 +116,54 @@ void sendAC(uint8_t b1);
 void sendAC(uint8_t b1, uint8_t fanSpd);
 static uint16_t acHeatRaw = 0x252F, acCoolRaw = 0x2540;
 static bool     seenAC = false;
-static uint8_t  ventSpeed = 0, ventMode = 0x40;
+static uint8_t  ventSpeed = 0;                   // derived wire value
+// The mode byte is COMPOSED per command from discrete state, never carried as
+// one shared mutable word. A shared word meant every command re-sent whatever
+// lid/direction bits happened to be in it, which reversed the lid twice.
+static bool     lidOpen = false;                 // commanded lid position
+static bool     airIn   = false;                 // commanded airflow direction
+#define VENT_ENABLE 0x40
+static inline uint8_t ventModeByte() {
+  return VENT_ENABLE | (lidOpen ? 0x10 : 0) | (airIn ? 0x01 : 0);
+}
+// Lid is a 3-state machine driven by the status flags: bit 3 = in motion,
+// bit 4 = open. The reported position is STALE for the whole ~10-15 s transit,
+// so it is only trustworthy while settled -- that is the rule, not an
+// ownership special case.
+enum LidState { LID_CLOSED = 0, LID_MOVING = 1, LID_OPEN = 2 };
+static LidState lidState = LID_CLOSED;
+// The "in motion" flag lags a lid command by ~3.6-4.1 s (docs/climate-control.md,
+// two independent runs). For that window the vent still reports its OLD
+// position, so adopting the report would silently undo the command we just
+// sent -- and any later command, composing the mode byte from lidOpen, would
+// drive the lid the wrong way. lidCmdAt marks the window.
+static uint32_t lidCmdAt = 0;
+// Fan run state is COMMANDED, never inferred. docs/climate-control.md records
+// that status byte 2 "oscillates between the setpoint and 0 on a rough 5-10 s
+// cycle" -- so the reported speed cannot answer "is the fan on?". It is the
+// setpoint that persists; ventFanOn says whether we are asking it to run.
+static bool     ventFanOn = false;
+// 0 = UNKNOWN. Never invent a setpoint: a hardcoded 100 against max 200 shows
+// as a confident "50%" that is pure fiction until the fan actually runs and
+// reports, or the user sets one.
+static uint8_t  ventSetSpeed = 0;
+// Until WE command the vent, the panel owns it and we must adopt what the bus
+// shows -- otherwise a fresh boot reports our defaults (off / out / 50%) as if
+// they were fact, while the fan is actually running.
+static bool     ventOwned = false;               // true once we have commanded
+// Byte 2 oscillates to 0 on a ~5-10 s cycle while the fan runs, so a zero
+// proves nothing -- but a NONZERO reading proves the fan IS running. Latch
+// that, and only believe "stopped" after sustained zeros past that period.
+static uint32_t ventLastNonZero = 0;
+static uint8_t  ventObsSpeed = 0;
+static uint8_t  ventRepSpeed = 0;                // speed the fan REPORTS
+static uint8_t  ventRepMode = 0;                 // mode/status the fan reports
 static float    ventT = 0;
+// Rixen mirrored state (all read from the bus)
+static uint16_t rixCurRaw = 0, rixTgtRaw = 0;
+static uint8_t  rixFlags = 0;
+static uint8_t  rixFan = 0, rixFurnace = 0, rixHotWater = 0;
+static bool     seenRix = false, seenRixCmd = false;
 static bool     seenVent = false;
 static float    invAcV = 0, invHz = 0;
 static bool     seenInv = false;
@@ -238,7 +292,13 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     else if (b[0] == 0x02) { grL = b[1]; grR = b[2]; }
     return;
   }
-  if (id == ID_AC_STAT) {                                // AC echoes our command
+  if (id == ID_AC_STAT) {
+    // NOTE: these variables are both "what we commanded" and "what the A/C
+    // reports". That is only safe because this frame is a verbatim ECHO of
+    // our command. If the A/C ever reports ACTUAL state here (e.g. fan speed
+    // 0 while idle), the setpoint and fan selection will start snapping back
+    // -- exactly the bug that hit the vent slider on 2026-08-26. Split
+    // commanded/reported before trusting any new field from this frame.
     seenAC = true;
     acB1 = b[1]; acFan = b[2]; acFanSpd = b[2];
     acHeatRaw = b[3] | (b[4] << 8);
@@ -247,11 +307,63 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
   }
   if (id == ID_VENT_STAT) {
     seenVent = true;
-    ventSpeed = b[2]; ventMode = b[3];
+    // Report-only for SPEED: the fan reports 0 while idle, and writing that
+    // back erased the slider's setpoint.
+    // The LID is different -- adopt its actual position into our command word,
+    // or a later speed/direction command sends the stale boot default (0x40 =
+    // enabled, not open) and closes an open vent.
+    ventRepSpeed = b[2]; ventRepMode = b[3];
+    bool moving = (ventRepMode & 0x08);
+    bool repOpen = (ventRepMode & 0x10);
+    // Settling window: from a lid command until the vent visibly starts
+    // moving. Clearing it on "report agrees with us" is wrong -- after an
+    // OPEN command an already-open report agrees immediately, which would
+    // reopen the hole. Only actual motion, or the timeout, ends it.
+    bool settling = lidCmdAt && (millis() - lidCmdAt < 6000);
+    if (moving) { lidCmdAt = 0; settling = false; }   // motion seen: window done
+    lidState = (moving || settling) ? LID_MOVING
+                                    : (repOpen ? LID_OPEN : LID_CLOSED);
+    // Adopt reported position/direction ONLY when settled -- never while the
+    // vent is moving, and never during the ~4 s before it admits it is.
+    if (!moving && !settling) {
+      lidOpen = repOpen;
+      airIn = (ventRepMode & 0x01);
+    }
+    if (ventRepSpeed > 0) {
+      ventLastNonZero = millis();
+      ventObsSpeed = ventRepSpeed;
+      // A running fan is the ONE time the real speed is on the bus: the
+      // command frame is fire-once and never re-broadcast, and the status
+      // byte reads 0 whenever the fan is off. Learn it whenever we have no
+      // setpoint, and always while the panel still owns the vent.
+      if (ventSetSpeed == 0 || !ventOwned) ventSetSpeed = ventRepSpeed;
+      if (!ventOwned) ventFanOn = true;
+    } else if (!ventOwned && ventLastNonZero &&
+               millis() - ventLastNonZero > 15000) {
+      ventFanOn = false;                // sustained zeros, past the oscillation
+    }
     ventT = raw2cF(b[4] | (b[5] << 8));
     return;
   }
   if (id == ID_AMBIENT) { seenAmb = true; ambC = raw2cF(b[1] | (b[2] << 8)); return; }
+  if (id == ID_RIX_STATUS) {                    // 0x724, LE 16-bit fields
+    seenRix = true;
+    rixCurRaw = b[0] | (b[1] << 8);             // x0.01 C
+    rixTgtRaw = b[2] | (b[3] << 8);             // x0.1  C
+    rixFlags  = b[6];                           // bit 3 = heat requested
+    return;
+  }
+  if (id == ID_RIX_CMD) {                       // 0x788, multiplexed on byte 0
+    seenRixCmd = true;
+    switch (b[0]) {
+      case 0x01: rixTgtRaw = b[1] | (b[2] << 8); break;   // target echo
+      case 0x02: rixFan = b[1]; break;
+      case 0x03: rixFurnace = b[1]; break;
+      case 0x06: rixHotWater = b[1]; break;
+      default: break;                            // 0x0C = ambient relay, ignored
+    }
+    return;
+  }
 }
 
 void onCanBFrame(const twai_message_t &m) {
@@ -335,12 +447,33 @@ void sendState() {
 
   if (seenVent) {
     char vs[64];
-    snprintf(vs, sizeof vs, "%s%s", ventMode & 0x10 ? "open" : "closed",
-             ventMode & 0x08 ? ", moving" : "");
-    J("\"ventst\":\"%s\",\"vspeed\":%d,\"fansp\":\"%s\",", vs, ventSpeed,
-      ventSpeed ? (ventMode & 1 ? "air in" : "air out") : "off");
-  } else J("\"ventst\":\"?\",\"vspeed\":0,\"fansp\":\"\",");
+    snprintf(vs, sizeof vs, "%s",
+             lidState == LID_MOVING ? "moving"
+                                    : (lidState == LID_OPEN ? "open" : "closed"));
+    // vset = the setpoint (survives fan-off); vfan = commanded run state.
+    // vrep is the raw reported speed, kept for diagnostics only -- it
+    // oscillates to 0 while the fan runs and must not drive any UI state.
+    J("\"ventst\":\"%s\",\"vspeed\":%d,\"vrep\":%d,\"vdir\":%d,"
+      "\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,"
+      "\"vown\":%d,\"vobs\":%d,\"fansp\":\"%s\",",
+      vs, ventSpeed, ventRepSpeed, airIn ? 1 : 0,
+      (lidState == LID_OPEN) ? 1 : 0, (lidState == LID_MOVING) ? 1 : 0,
+      ventSetSpeed, ventFanOn ? 1 : 0, ventOwned ? 1 : 0, ventObsSpeed,
+      ventFanOn ? (airIn ? "air in" : "air out") : "off");
+  } else J("\"ventst\":\"?\",\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
+           "\"vopen\":0,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
+           "\"vown\":0,\"vobs\":0,\"fansp\":\"\",");
 
+  if (seenRix) {
+    // 0x724: current x0.01 C, target x0.1 C. Rixen takes the target with NO
+    // deadband (unlike the RV-C thermostat frame, which carries panel +/- 2).
+    J("\"rixcur\":%.1f,\"rixtgt\":%.1f,\"rixheat\":%d,",
+      (rixCurRaw * 0.01f) * 9.0f / 5.0f + 32.0f,
+      (rixTgtRaw * 0.1f) * 9.0f / 5.0f + 32.0f,
+      (rixFlags & 0x08) ? 1 : 0);
+    J("\"rixfan\":%d,\"rixfurn\":%d,\"rixhw\":%d,", rixFan, rixFurnace, rixHotWater);
+  } else J("\"rixcur\":null,\"rixtgt\":null,\"rixheat\":0,"
+           "\"rixfan\":0,\"rixfurn\":0,\"rixhw\":0,");
   if (seenTank) J("\"fresh\":%d,\"gray\":%d,", fwR ? fwL * 100 / fwR : 0, grR ? grL * 100 / grR : 0);
   else J("\"fresh\":null,\"gray\":null,");
 
@@ -408,24 +541,38 @@ void onCmd() {
     sendAC(acB1 ? acB1 : 0x01);
     sendOK("cool setpoint");
   } else if (c == "vent") {
-    // Any combination of open/dir/speed args folds into one command frame.
+    //   open=0|1  lid position       fan=0|1   run state
+    //   speed=N   setpoint (N=0 stops)   dir=0|1   airflow
+    // Each argument touches only its own state; the mode byte is composed at
+    // send time, so a speed command can never move the lid.
     bool used = false;
     if (server.hasArg("open")) {
-      bool o = server.arg("open") == "1";
-      ventMode = (ventMode & ~0x10) | 0x40 | (o ? 0x10 : 0);  // enable stays; open bit follows
-      if (!o) ventSpeed = 0;
+      lidOpen = (server.arg("open") == "1");
+      lidCmdAt = millis();               // opens the settling window
+      if (!lidOpen) ventFanOn = false;   // closed lid: fan stops, setpoint kept
       used = true;
     }
-    if (server.hasArg("dir")) {
-      if (server.arg("dir") == "1") ventMode |= 0x01; else ventMode &= ~0x01;
-      ventMode |= 0x40;
-      used = true;
-    }
+    if (server.hasArg("dir")) { airIn = (server.arg("dir") == "1"); used = true; }
     if (server.hasArg("speed")) {
-      ventSpeed = (uint8_t)constrain(server.arg("speed").toInt(), 0, 255);
+      int v = server.arg("speed").toInt();
+      if (v > 0) ventSetSpeed = (uint8_t)constrain(v, 1, 200);
+      else ventFanOn = false;            // explicit 0 = stop, setpoint preserved
       used = true;
     }
-    if (used) { sendVent(ventSpeed, ventMode); sendOK("vent"); }
+    if (server.hasArg("fan")) {
+      ventFanOn = (server.arg("fan") == "1");
+      if (ventFanOn && ventSetSpeed == 0) ventSetSpeed = 100;  // must start somewhere
+      used = true;
+    }
+    if (used) {
+      ventOwned = true;
+      ventSpeed = ventFanOn ? ventSetSpeed : 0;
+      sendVent(ventSpeed, ventModeByte());
+      char m[80];
+      snprintf(m, sizeof m, "vent wire=%u set=%u fan=%d lid=%d air=%d",
+               ventSpeed, ventSetSpeed, ventFanOn ? 1 : 0, lidOpen ? 1 : 0, airIn ? 1 : 0);
+      sendOK(m);
+    }
     else server.send(400, "text/plain", "bad vent");
   } else if (c == "inv") {
     bool on = server.arg("on") == "1";

@@ -34,10 +34,9 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .bar>div.g{background:#a07840}
 .sw2{position:relative;display:inline-flex;width:132px;height:40px;background:#2a3440;border-radius:10px;cursor:pointer;user-select:none}
 .sw2 .lbl{flex:1;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--mut);z-index:1}
-.sw2 .knob{position:absolute;top:3px;left:3px;width:63px;height:34px;border-radius:8px;background:var(--ac);
-  display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;transition:left .18s ease;z-index:2}
+.sw2 .knob{position:absolute;top:3px;left:3px;width:63px;height:34px;border-radius:8px;background:#5a6773;
+  display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--tx);transition:left .18s ease;z-index:2}
 .sw2.in .knob{left:66px}
-.sw2.off .knob{background:#46535f}
 .dimtbl{width:100%;border-collapse:collapse}
 .dimtbl td{padding:5px 3px;vertical-align:middle}
 .dimtbl td.nm{white-space:nowrap}
@@ -72,12 +71,12 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <h2>Roof vent</h2><div class="card">
 <div class="row"><span class="name">Vent <span class="sub" id="ventst"></span></span>
 <span><button id="vtog">—</button></span></div>
-<div class="row"><span class="name">Fan</span>
+<div class="row"><span class="name">Fan <span class="sub" id="fannote"></span></span>
 <span><button id="ftog">off</button></span></div>
 <div class="row"><span class="name">Fan airflow</span>
 <span class="sw2" id="fdir"><span class="lbl">Out</span><span class="lbl">In</span><span class="knob" id="fknob">Out</span></span></div>
 <div class="row"><span class="name">Fan speed</span><b id="sppct">--</b></div>
-<div class="row"><input type="range" id="vrange" min="0" max="255" value="0"></div>
+<div class="row"><input type="range" id="vrange" min="0" max="200" value="0"></div>
 </div>
 
 <h2>Power</h2><div class="card">
@@ -87,6 +86,15 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <span><b id="fresh">--</b><span class="bar"><div id="freshbar"></div></span></span></div>
 <div class="row"><span class="name">Gray water</span>
 <span><b id="gray">--</b><span class="bar"><div id="graybar" class="g"></div></span></span></div>
+</div>
+
+<h2>Rixen hydronic heat <span class="sub" style="text-transform:none;letter-spacing:0">(read-only, use panel)</span></h2>
+<div class="card" id="rixcard">
+<div class="row"><span class="name">Cabin <span class="sub" id="rixheat"></span></span><b id="rixcur">--</b></div>
+<div class="row"><span class="name">Target</span><b id="rixtgt">--</b></div>
+<div class="row sub2"><span class="name">Furnace</span><b id="rixfurn">--</b></div>
+<div class="row sub2"><span class="name">Hot water</span><b id="rixhw">--</b></div>
+<div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
 <div id="foot"></div>
@@ -208,39 +216,118 @@ for(let k=0;k<3;k++){
 // Vent lid is one binary toggle (motion takes seconds: commanded state stays
 // highlighted until the status frame confirms it, hold expires at 15 s).
 let curVent=0, ventHold=0;   // 0 closed, 1 open
-let curFan=0, fanHold=0;     // 0 off, 1 out, 2 in
+let curFan=0, fanHold=0;     // 0 = off, 1 = running
+let fanLockUntil=0;          // airflow-change lockout (see setFanLock)
+// Lid is 3-state: closed / moving / open. The firmware reports which, from
+// the status flags (bit 3 = in motion), so the UI no longer guesses with a
+// blind 15 s timer -- it shows the transit and follows the real position.
+let lidMoving=false;
 function paintVent(){
   const b=document.getElementById("vtog");
-  b.textContent=curVent?"Open":"Closed";
-  b.className=curVent?"on":"sel";
+  b.textContent=lidMoving?"···":(curVent?"Open":"Closed");
+  b.className=lidMoving?"sel":(curVent?"on":"sel");
+  b.disabled=lidMoving;                     // no commands mid-transit
 }
 document.getElementById("vtog").onclick=()=>{
-  curVent^=1; paintVent(); ventHold=Date.now()+15000;
+  if(lidMoving)return;
+  curVent^=1;
+  if(!curVent){curFan=0;fanHold=Date.now()+3000;}   // closed lid => fan off
+  lidMoving=true;                           // optimistic: motion starts now
+  paintVent(); paintFan();
+  ventHold=Date.now()+3000;                 // brief, just until the report moves
   cmd("vent&open="+curVent);
 };
-// Fan on/off and airflow direction are independent: direction is remembered
-// while the fan is off so turning it back on resumes the same airflow.
+// FAN MODEL (rewritten 2026-08-26 after the whole section misbehaved).
+//
+// The rule that fixes everything here: the fan's RUN STATE is commanded, never
+// inferred. docs/climate-control.md records that vent status byte 2 "oscillates
+// between the setpoint and 0 on a rough 5-10 s cycle" while the command byte
+// holds steady -- so the reported speed cannot answer "is the fan on?". Reading
+// it as truth is what made the button say "off" while the fan was spinning.
+//
+// State, all owned by the firmware and mirrored here:
+//   vfan  - commanded run state (authoritative)
+//   vset  - the speed SETPOINT; survives fan-off, lid-close, and reboots
+//   vdir  - airflow direction; independent of run state
+//   vrep  - reported speed: DIAGNOSTIC ONLY, never drives UI state
 let fanDir=0;       // 0 = out, 1 = in
-let lastVSpeed=100; // remembered so the slider shows a level while off
+let fanSet=0;       // slider position = setpoint; 0 until the bus tells us
 function paintFan(){
+  const locked=fanLocked();
+  const shut=!curVent;                 // a closed lid means the fan cannot RUN
   const b=document.getElementById("ftog");
   b.textContent=curFan?"ON":"off"; b.className=curFan?"on":"";
+  b.disabled=locked||shut;             // only the run button is gated by the lid
   const d=document.getElementById("fdir");
-  d.className="sw2"+(fanDir?" in":"")+(curFan?"":" off");
+  d.className="sw2"+(fanDir?" in":"");
+  d.style.opacity=locked?"0.45":"";    // airflow stays usable with the lid shut
   document.getElementById("fknob").textContent=fanDir?"In":"Out";
+  document.getElementById("vrange").disabled=locked;
+  document.getElementById("fannote").textContent=
+    shut ? "· open vent to enable fan"
+         : (locked ? "· temporarily stopping for airflow change" : "");
 }
+// The fan physically stops and restarts when airflow reverses, and reports
+// speed 0 while it does. Rather than decode that transient off the wire,
+// lock the fan controls for 10 s and say plainly what is happening.
+function fanLocked(){return Date.now()<fanLockUntil;}
+function setFanLock(){
+  fanLockUntil=Date.now()+13000;
+  if(fanHold<fanLockUntil) fanHold=fanLockUntil;   // never shorten the lock
+  paintFan();
+  const tick=()=>{
+    if(fanLocked()){setTimeout(tick,250);return;}
+    paintFan();
+  };
+  setTimeout(tick,250);
+}
+// on/off: an explicit fan= command. Speed is not mentioned, so the firmware
+// starts at its remembered setpoint and the setpoint cannot be clobbered.
 document.getElementById("ftog").onclick=()=>{
-  curFan=curFan?0:1; paintFan(); fanHold=Date.now()+3000;
-  cmd(curFan?("vent&dir="+fanDir+"&speed="+fanSpeed()):"vent&speed=0");
+  if(fanLocked()||!curVent)return;
+  curFan=curFan?0:1;
+  fanHold=Date.now()+3000;
+  paintFan();
+  cmd("vent&fan="+curFan);
 };
 document.getElementById("fdir").onclick=()=>{
-  fanDir^=1; paintFan(); fanHold=Date.now()+3000;
-  cmd("vent&dir="+fanDir+(curFan?"&speed="+fanSpeed():""));
+  if(fanLocked())return;
+  const wasRunning=curFan;        // only a SPINNING fan has to stop and restart
+  fanDir^=1;
+  paintFan();
+  cmd("vent&dir="+fanDir);        // direction only; run state untouched
+  if(wasRunning) setFanLock();    // fan off: nothing stops, so no lockout
 };
-function fanSpeed(){const v=parseInt(document.getElementById("vrange").value);return v>0?v:100;}
 const vr=document.getElementById("vrange");
-vr.oninput=()=>{document.getElementById("sppct").textContent=Math.round(vr.value/2.55)+"%";};
-vr.onchange=()=>cmd("vent&speed="+vr.value);
+// Mobile browsers do not reliably fire "change" on a range input, and reading
+// vr.value inside a release handler proved unreliable on the phone. Track the
+// value in a variable, send throttled on input and on every release event.
+let ventPend=0;
+function sendVentSpeed(){
+  const v=ventPend|0;
+  fanHold=Date.now()+3000;
+  if(v<=0){                       // slider at zero = stop, setpoint preserved
+    if(curFan){curFan=0;paintFan();cmd("vent&speed=0");}
+    return;
+  }
+  // Setting a speed does NOT start the fan; only the fan button does that.
+  fanSet=v; paintFan();
+  cmd("vent&speed="+v);
+}
+vr.oninput=()=>{
+  if(fanLocked())return;
+  ventPend=parseInt(vr.value,10)||0;
+  document.getElementById("sppct").textContent=Math.round(ventPend/2)+"%";
+  const now=Date.now();
+  if(now-(vr._last||0)>250){vr._last=now;sendVentSpeed();}
+};
+["change","pointerup","touchend","mouseup","keyup"].forEach(ev=>
+  vr.addEventListener(ev,()=>{
+    if(fanLocked())return;
+    ventPend=parseInt(vr.value,10)||ventPend;
+    vr._last=Date.now();
+    sendVentSpeed();
+  }));
 
 // --- inverter ------------------------------------------------------------------------
 // Single-shot latch, no status echo: button = last commanded state, the AC
@@ -293,27 +380,49 @@ async function poll(){
       }
       paintAcFan();
     }
-    if(Date.now()>=spHold)
-      document.getElementById("coolsp").textContent=j.coolsp!=null?j.coolsp+"°":"--";
-    const sOpen=(j.ventst||"").indexOf("open")===0?1:0;
-    if(Date.now()>=ventHold||sOpen===curVent){curVent=sOpen;paintVent();}
-    document.getElementById("ventst").textContent=(j.ventst||"").indexOf("moving")>=0?"· moving":"";
+    if(Date.now()>=spHold){
+      coolSp=(j.coolsp!=null)?j.coolsp:null;
+      document.getElementById("coolsp").textContent=coolSp!=null?coolSp+"°":"--";
+    }
+    const sOpen=j.vopen?1:0;          // explicit field, not parsed prose
+    if(Date.now()>=ventHold){
+      const was=curVent, wasMoving=lidMoving;
+      lidMoving=!!j.vmoving;
+      if(!lidMoving) curVent=sOpen;      // trust position only when settled
+      if(was!==curVent||wasMoving!==lidMoving){paintVent();paintFan();}
+    }
+    document.getElementById("ventst").textContent=lidMoving?"· moving":"";
     if(Date.now()>=fanHold){
-      curFan=j.vspeed>0?1:0;
-      if(j.fansp) fanDir=(j.fansp.indexOf("in")>=0)?1:0;
+      // Authoritative fields only. vrep is deliberately ignored: it reports 0
+      // on a 5-10 s cycle while the fan is genuinely running.
+      if(j.vfan!=null) curFan=j.vfan?1:0;
+      if(j.vdir!=null) fanDir=j.vdir?1:0;
       paintFan();
     }
-    if(document.activeElement!==vr&&!vr._drag){
-      // Show the SET speed even when the fan is off, like the light sliders.
-      if(j.vspeed>0) lastVSpeed=j.vspeed;
-      const shown=j.vspeed>0?j.vspeed:lastVSpeed;
-      vr.value=shown;
-      document.getElementById("sppct").textContent=Math.round(shown/2.55)+"%";
+    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()){
+      // The slider shows the SETPOINT, which persists across fan-off and
+      // lid-close. While the panel still owns the vent (vown=0) the firmware
+      // adopts the observed speed into vset, so this shows reality on a
+      // fresh boot instead of an invented default.
+      if(j.vset!=null&&j.vset>0){
+        fanSet=j.vset;
+        vr.value=fanSet;
+        document.getElementById("sppct").textContent=Math.round(fanSet/2)+"%";
+      }else{
+        document.getElementById("sppct").textContent="--";
+      }
     }
     if(j.invon!=null&&j.invon>=0&&curInv!==j.invon){curInv=j.invon;paintInv();}
     acPower=!!j.aclive; paintAcGate();
     document.getElementById("invline").textContent=
       j.shore?"· shore power · "+(j.invtext||"") : (j.invtext?"· "+j.invtext:"");
+    // Rixen: read-only mirror of the heater's own state
+    document.getElementById("rixcur").textContent=j.rixcur!=null?j.rixcur.toFixed(1)+"°F":"--";
+    document.getElementById("rixtgt").textContent=j.rixtgt!=null?j.rixtgt.toFixed(1)+"°F":"--";
+    document.getElementById("rixheat").textContent=j.rixheat?"· calling for heat":"";
+    document.getElementById("rixfurn").textContent=j.rixfurn?"on":"off";
+    document.getElementById("rixhw").textContent=j.rixhw?"on":"off";
+    document.getElementById("rixfan").textContent=j.rixfan?String(j.rixfan):"off";
     document.getElementById("fresh").textContent=j.fresh!=null?j.fresh+"%":"--";
     document.getElementById("freshbar").style.width=(j.fresh||0)+"%";
     document.getElementById("gray").textContent=j.gray!=null?j.gray+"%":"--";
@@ -323,11 +432,16 @@ async function poll(){
 }
 
 // --- remaining buttons ------------------------------------------------------------------
+// Setpoint lives in a variable; reading it back out of the rendered text
+// made the DOM the source of truth (and relied on parseInt stopping at the
+// degree sign). Same failure family as the vent bugs.
+let coolSp=null;
 function stepCool(d){
   spHold=Date.now()+1600;
-  const el=document.getElementById("coolsp");
-  const v=parseInt(el.textContent);
-  if(!isNaN(v)) el.textContent=(v+d)+"°";
+  if(coolSp!=null){
+    coolSp+=d;
+    document.getElementById("coolsp").textContent=coolSp+"°";   // optimistic
+  }
   cmd("cool&d="+d);
 }
 // Touch drags do not always set activeElement, so mark the slider as held
@@ -345,6 +459,7 @@ document.getElementById("coolup").onclick=()=>stepCool(1);
 document.getElementById("cooldn").onclick=()=>stepCool(-1);
 for(let i=0;i<4;i++)paintLight(i); for(let i=0;i<3;i++)paint(i);
 paintAc(); paintAcGate(); paintComp(); paintAcFan(); paintVent(); paintFan(); paintInv();
+document.getElementById("sppct").textContent="--";   // no invented value pre-poll
 setInterval(poll,1200);
 poll();
 </script></body></html>)rawliteral";
