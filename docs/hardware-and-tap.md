@@ -73,12 +73,11 @@ All 7 wires in the populated 23‑pin AMPSEAL, decoded against the manual:
 **Both CAN buses are present.** The accordion-sleeved group is CAN1 + power +
 ignition; the group tagged "CONTROL PANEL" is CAN2.
 
-> **Ground:** the manual's pinout gives one ground, pin 8, in the sleeved
-> group. Each CAN channel on the companion board is independently isolated and
-> needs its own ground reference, so the install uses two ground taps. Whether
-> the second lands on a separate conductor in the CONTROL PANEL group or on
-> pin 8 again is **not recorded here** — check your own connector rather than
-> assuming, and see the tap procedure below.
+> **Ground:** there is one ground in this connector — **pin 8, gray**, in the
+> sleeved group. Each CAN channel on the companion board is independently
+> isolated and wants its own ground reference, so **both** channels tap that
+> same pin-8 gray, one lead each. Two taps, one conductor. (Owner-reported;
+> the connector has no second ground to confuse it with.)
 
 Why this mapping is trustworthy — three independent things agree:
 1. Every one of the 7 wires lands on a documented pin, with **no leftovers**.
@@ -100,9 +99,9 @@ right there in the same connector.
    ~2–3 V to ground (≈2.5 V nominal), with a small differential that flickers as
    traffic flows — *not* 0 V, *not* 12 V. Confirm green/yellow behave this way.
 2. **T‑tap** (Posi‑Tap / gel quick‑splice, no cutting) onto the two wires:
-   - **CAN_H → yellow**, **CAN_L → green**, **GND → gray (pin 8) / chassis**
-   - Repeat for the second bus. Each isolated channel needs its own ground
-     reference; do not share one tap between them.
+   - **CAN_H → yellow**, **CAN_L → green**, **GND → gray (pin 8)**
+   - Repeat for the second bus, taking its ground lead from that same pin-8
+     gray. Each isolated channel needs its own lead; they share the conductor.
 3. **Termination OFF** on the CANable — the bus is already terminated at its
    ends; a third terminator would unbalance it.
 4. **Listen‑only first.** Never transmit until we've confirmed we're reading the
@@ -118,7 +117,7 @@ right there in the same connector.
 | Part | Needed for | Note |
 |---|---|---|
 | **LILYGO T-2CAN-FD** (ESP32-S3) | the companion box | **Two independent CAN interfaces**, which this van requires — CAN1 for loads/climate, CAN2 for battery. MCP2518FD over SPI + the ESP32's own TWAI, both on isolated TD501MCAN transceivers. ~$25-30. |
-| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | **Six** — CAN-H, CAN-L and a ground reference for each of the two buses. The transceivers are independently isolated, so each channel needs its own ground; without it you get garbage and will chase a phantom bitrate problem. Taps the wires without cutting. |
+| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | **Six** — green and yellow on each bus, plus a ground lead per bus. Both grounds go to the same pin-8 gray wire: the transceivers are independently isolated, so each channel needs its own reference, but there is only one ground in the connector. Taps the wires without cutting. |
 | **Hook-up wire, 22-24 AWG** | the runs from tap to box | CAN is signal-level (µA); gauge is about handling, not current. |
 | USB-C cable (**data**, not charge-only) | power + flashing | A charge-only cable powers the board fine and silently fails to enumerate — an easy hour to lose. |
 | **CANable** USB-CAN adapter | development only | See below. Not needed to install a working box. |
