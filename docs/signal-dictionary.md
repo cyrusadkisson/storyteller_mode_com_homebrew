@@ -185,14 +185,14 @@ in a nicer way than the stock screen does.
 
 ---
 
-## What this gives us vs. what's still needed
+## What this gives us
 
-**Have (from this file):** every signal's id, human name, unit, logical device &
-channel, and — for the Rixen heater and the inverter — actual CAN ids/DGNs.
+Every signal's id, human name, unit, logical device and channel, and — for the
+Rixen heater and the inverter — actual CAN ids/DGNs.
 
-**Still needed for full read/write:** the wire-level mapping for the *rest* of the
-signals — which CAN PGN / frame id and byte offset carries each PDM point and the
-Lithionics data. Candidate sources to mine next: `app/CANPro-manager`,
-`app/j1939`, `app/PDM-Manager`, and `config/config0/Configuration.bin`; then
-confirm against **one live bus capture** (start with the known Rixen `0x724`–`0x788`
-frames to validate the capture rig before decoding the unknowns).
+The dictionary names the signals but does not say which frame carries them.
+That wire-level mapping was recovered separately, by live capture:
+[`pdm-control.md`](pdm-control.md) for the PDM loads,
+[`climate-control.md`](climate-control.md) for the heater, thermostat and vent,
+and [`energy-can2.md`](energy-can2.md) for the Lithionics pack, inverter and
+charger.

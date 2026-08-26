@@ -148,14 +148,16 @@ fell when the cabin light switched on. **The water-pump test showed it rising
 when a load switched on** — the opposite direction. One correlation, called too
 early. `FB` byte 6 drifts on its own; its meaning is **unknown**.
 
-## What this does NOT yet establish
+## What this section did not establish
 
-- Which physical load each byte drives (one confirmed so far; repeat the
-  OFF→ON→OFF diff per load).
-- Whether `0x40` is a brightness level or just this load's "on" constant —
-  a dimmer sweep will settle it.
-- Whether writing these frames actually actuates a load. **Nothing has been
-  transmitted yet.** That is session #2 and carries real risk.
+Left as the state of play at this point in the analysis; all three were
+answered by the live captures that follow.
+
+- Which physical load each byte drives → the full map below.
+- Whether `0x40` is a brightness level or an "on" constant → a level; see
+  "Dimming confirmed on hardware".
+- Whether writing these frames actuates a load → yes, and only from SA `0x11`;
+  see the transmission tests.
 
 ---
 
@@ -340,57 +342,18 @@ levels into the same command frame we already decoded:
 Preset 1  ->  0x14EF1E11 : FC 7F 7F 7F 7F 7F 40 FF
 ```
 
-A companion app can implement scenes by writing one frame. The same will apply
-to Preset 2 and "chill mode" — capture each once to read off its stored levels.
-
-> **Caveat (2026-08-25):** "writing one frame" sets the levels for exactly one
-> HU cycle (~11 ms) and is then overwritten, same as any other direct output
-> write. Scenes are only durable via the **input spoof** (press the switches
-> the scene would press) or **cut-and-stand-in**. The captured preset levels
-> below are still the right *reference* for what a scene should look like.
-
-Note `0x7F` here vs `0x40` when switching a light on manually: `0x40` is the
-panel's remembered per-light default, `0x7F` is what Preset 1 stores. Both are
-just levels on the same scale.
-
-## Physical switches are PDM *inputs* (2026-08-11)
-
-The van's physical buttons are **PDM digital inputs (DI)**, not a separate
-control path:
-
-| Physical switch | Dictionary entry |
-|---|---|
-| "master", near driver | `PDM2.DI6.MasterLightSwitch` |
-| galley aux1 | `PDM2.DI4.Aux1Switch` |
-| galley awning lights | `PDM1.DI5.AwningLightSwitch` |
-| galley awning arm | `PDM1.DI7.AwningEnable` |
-| galley awning out / in | `PDM1.DI12` / `PDM1.DI11` |
-| cargo / cabin lights | `PDM1.DI3` / `PDM1.DI4` |
-| water pump, sink, furnace | `PDM2.DI5` / `DI9` / `DI7` |
-
-Pressing one does **not** emit a new message type. The PDM reports the input,
-the head unit runs its scene logic, and then writes the ordinary output frame
-we already decoded.
-
-**Emulating the switch input is how a parallel tap controls a load.** Writing
-the output directly does not persist — the head unit overwrites it within
-~11 ms — and holding it would mean out-transmitting the head unit. Spoofing
-the input instead makes the HU change its own mind and hold the new state
-itself. See `modewifi-analysis.md` §2. The corollary is the reading-light
-finding below: a channel with **no** digital input cannot be controlled from a
-parallel tap at all.
-
-## Aux1 confirmed — perimeter lights (2026-08-11)
-
-`0x14EF1F11[FD]` byte 6, `0x00` ↔ `0x7F`. The owner pressed the galley aux1
-button three times inside one 15 s capture, giving OFF→ON→OFF→ON — a
-self-contained confirmation cycle. No other byte on either PDM moved.
+Writing one frame sets these levels for exactly one head-unit cycle (~11 ms)
+before being overwritten, like any other direct output write — so a parallel
+tap cannot hold a scene. The captured preset levels are still the right
+reference for what a scene should look like; an **inline** controller could
+apply them durably. The same applies to Preset 2 and "chill mode": capture each
+once to read off its stored levels.
 
 **The command snaps straight to `0x7F`** with no intermediate values, despite
 the dictionary marking Aux1 as a `%` channel with `Aux1 Ramp` / `TM Aux1Ramp`
 variables. So the soft-start ramp lives **inside the PDM**, not in the head
-unit's command stream. A companion app writes the target level and gets the
-fade for free; it does not need to animate the value.
+unit's command stream. Whatever writes the target level gets the fade for free;
+it does not need to animate the value.
 
 ## Master toggle is destructive (2026-08-11)
 
@@ -411,14 +374,11 @@ covers PDM1 lighting only.
 
 ### Opportunity for the companion app
 
-This is a genuine improvement the app can make over the factory UI with no new
-protocol: **snapshot the six PDM1 lighting bytes before a master-off and write
-them back on master-on.** Same single frame, but the room comes back the way
-you left it.
-
-Still to capture: master **OFF** (presumably writes `00` across the same
-channels — unverified), and the master **dimmer slider**, which decides whether
-the master is a proportional scaler or another flat overwrite.
+A parallel-tap app could in principle improve on this — snapshot the six PDM1
+lighting bytes before a master-off and write them back on master-on, so the
+room returns the way you left it. **The companion controller does not**, because
+writing levels at all means out-transmitting the head unit; see "Dimming
+abandoned" below. It is available to an inline controller.
 
 ## Master dimmer slider (2026-08-11) — partially inconclusive
 
@@ -451,8 +411,9 @@ turns out to be impossible, and *why* it is impossible is the answer:
    states** (`4A 52 4D 55` and all-zero), so it is unconditional.
 
 There is never a per-channel ratio for the master to preserve. It applies a
-single level to all four lights. An app should model it that way — or, better,
-implement a real scaler, which the factory system does not have.
+single level to all four lights. A real proportional scaler — which the factory
+system does not have — is available to an inline controller, but not to a
+parallel tap, which cannot hold a level at all.
 
 ## Presets are stateless — confirmed independently
 
@@ -487,10 +448,10 @@ their finger.
 > replicate hold semantics, and should carry a failsafe timeout so a dropped
 > connection or a crashed UI cannot leave a pump running.
 
-Which other channels are momentary is **not yet established**. `WaterPump`
-(PDM1 DO12) behaved as a latching toggle in its capture, but the awning motor
-channels are obvious momentary candidates. Assume momentary until shown
-otherwise for anything that moves or pumps.
+Momentary vs latching must be established per channel. `WaterPump` (PDM1 DO12)
+is a latching toggle; `SinkPump` (PDM2 DO11) is hold-to-run. The awning motor
+latches — it holds its commanded direction until something writes `0x00`.
+**Assume momentary until shown otherwise for anything that moves or pumps.**
 
 ## Bidirectional motor channel — the awning (2026-08-11)
 
@@ -635,7 +596,7 @@ CAN that produces error frames.
 Totals for the day: ~370 transmitted frames, `bus-errors 0`, `error-warn/pass`
 unchanged, no restarts.
 
-## What this means for the companion box (phase 3)
+## What this means for a companion controller
 
 1. **Writes must impersonate SA 0x11.** Only that address is obeyed.
 2. **Nothing persists by itself.** The head unit re-asserts every ~11 ms, so a

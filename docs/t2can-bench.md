@@ -1,14 +1,13 @@
-# T-2CAN-FD bench bring-up (2026-08-22/23)
+# T-2CAN-FD bench bring-up
 
-The phase-3 hardware is the **LILYGO T-2CAN-FD** (ESP32-S3-WROOM-1U, two CAN
-channels). This doc captures what it took to get it building, flashing, and
-verified on the bench, and the two real firmware bugs in the LILYGO stock
-example for this exact board that silently break any CAN work.
+The companion controller runs on a **LILYGO T-2CAN-FD** (ESP32-S3-WROOM-1U, two
+CAN channels). This doc covers what it took to get it building, flashing and
+verified on the bench, and the two firmware bugs in the LILYGO stock example
+for this exact board that silently break any CAN work.
 
-Status: **benched and verified** — both channels transmit/receive on the board's
-own self-loop, channel A's frames are decoded by the Jhoinrch CANable at 500k,
-and channel A transmits the van's real 29-bit extended PDM datagrams at the van's
-bus speed (250 kbit/s), confirmed by the Jhoinrch (2026-08-24).
+Anyone building one of these will hit both bugs; they are the reason the
+library is vendored in [`firmware/t2can/`](../firmware/t2can/) rather than
+pulled from upstream.
 
 ## Toolchain (Linux, x86_64)
 

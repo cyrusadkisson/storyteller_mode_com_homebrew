@@ -50,11 +50,13 @@ acting on it, and assume the mapping is wrong until you have proven otherwise.
 **Do not use this on a vehicle you do not own**, and do not use it to interfere
 with anyone else's property.
 
-Nothing here has been verified by transmitting. Everything was obtained
-**passively, by listening.** The authors and contributors accept **no liability
-whatsoever** for any loss, damage or injury arising from use of this material.
-If you are not prepared to own the consequences of your own actions on your own
-vehicle, **do not proceed.**
+**This project transmits on the vehicle bus.** The mapping was built by
+listening, but the companion controller commands lights, pumps, the roof A/C,
+the vent and the inverter for real, and this repository documents how. The
+authors and contributors accept **no liability whatsoever** for any loss,
+damage or injury arising from use of this material. If you are not prepared to
+own the consequences of your own actions on your own vehicle, **do not
+proceed.**
 
 ---
 
@@ -84,15 +86,18 @@ got there.
   named signal on it, and the firmware ships the full **signal dictionary**
   ([`DeviceInformationAll.pbuff`]) that names them all. That's our map.
 
-Plan: a small gateway (e.g. ESP32 + CAN transceiver, or Pi + CAN HAT) taps the
-bus and bridges it to a phone/web UI. **No firmware flashing → no brick risk.**
+The companion controller is a **LILYGO T-2CAN-FD** (ESP32-S3, two independent
+CAN interfaces) that taps both buses and serves a phone web UI over its own
+WiFi access point. The stock firmware is never modified — **no flashing, no
+brick risk.** See [`hardware-and-tap.md`](docs/hardware-and-tap.md).
 
 ## Repo layout
 
 ```
-docs/     project documentation & reverse‑engineering notes
-tools/    scripts that operate on YOUR local copy of the firmware
-app/      companion interface (added later)
+docs/      project documentation & reverse-engineering notes
+tools/     scripts that operate on YOUR local copy of the firmware
+firmware/  the companion controller's own firmware (T-2CAN-FD)
+data/      machine-readable CAN map and channel tables
 ```
 
 ## ⚠️ What is NOT in this repo (intentionally)
@@ -121,9 +126,6 @@ the point of it, and it is also the risk.
 - The head unit shares this bus with the van's DC electrical system. Treat
   transmitting as a separate, deliberate step — not a continuation of sniffing.
 
-Everything documented here was obtained **passively**, by listening. Nothing in
-this repository has been verified by transmitting.
-
 **If you transmit, you own what happens.** Bring the bus up listen-only, prove
 you are on the right one, and treat the first transmitted frame as its own
 deliberate project with a load chosen so the worst case is a light coming on —
@@ -149,27 +151,54 @@ rights to the vendor firmware, which is not included here.
 
 ## Status
 
-**CAN1 mapped and largely decoded. CAN2 confirmed and being decoded.**
+**The companion controller is built and running in the van.** It taps both CAN
+buses, serves a phone UI over its own WiFi AP, and commands the loads listed
+below. The stock system is untouched and remains the fallback.
 
 | Area | State |
 |---|---|
 | `.pv1` firmware | unpacked, structure documented ([`architecture.md`](docs/architecture.md)) |
 | Signal dictionary | 1758 signals decoded ([`signal-dictionary.md`](docs/signal-dictionary.md)) |
 | Wire-level CAN DB | 30 messages / 129 signals from `Configuration.bin` ([`can-map.md`](docs/can-map.md)) |
-| **PDM load control** | **protocol cracked, 10 channels confirmed on the wire** ([`pdm-control.md`](docs/pdm-control.md)) |
-| **Climate** | **Rixen, thermostat and vent fully decoded** ([`climate-control.md`](docs/climate-control.md)) |
+| PDM load control | protocol cracked, channels confirmed on the wire ([`pdm-control.md`](docs/pdm-control.md)) |
+| Climate | Rixen, thermostat and vent fully decoded ([`climate-control.md`](docs/climate-control.md)) |
 | Tanks | decoded, verified against the panel |
-| **Battery / inverter / charger** | **CAN2 tapped and largely decoded** ([`energy-can2.md`](docs/energy-can2.md)) |
-| Companion device | not started |
+| Battery / inverter / charger | CAN2 tapped and decoded ([`energy-can2.md`](docs/energy-can2.md)) |
+| **Companion controller** | **built, flashed, in the van** ([`firmware/t2can/`](firmware/t2can/)) |
+
+### What the controller does
+
+| Works | How |
+|---|---|
+| Cabin, garage, awning light, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
+| Roof A/C — off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write, echoed back by the A/C |
+| Roof vent — lid, fan, airflow, speed | direct write, echoed by the vent |
+| Inverter | single-shot latch on CAN2 |
+| Read-only display | per-channel levels and feedback amps, tanks, battery/SoC, AC line, temperatures, PDM faults, Rixen heater state |
+
+**Deliberately not included**, each for a measured reason:
+
+- **Dimming** — holding a brightness means out-transmitting the head unit
+  continuously (~250 Hz, roughly +50% bus load). Rejected on bus-safety
+  grounds; brightness stays on the factory panel.
+- **Reading lights** — they have no digital input to spoof, and a direct write
+  is overwritten within ~11 ms.
+- **Rixen heater writes** — the heater accepts them in ~300 ms, but the head
+  unit reverts them within ~5 s. Holding one would oscillate a diesel burner's
+  setpoint, so the app reads the heater and does not command it.
+- **Sink drain, awning motor** — owner decision / hardware removed from this van.
+
+All of those would need an **inline** ("cut-and-stand-in") controller that owns
+the channel outright, rather than a parallel tap.
+
+### Buses
 
 The van uses **two CAN buses split by function**: CAN1 (pins 5/6) carries house
 loads, tanks and climate; CAN2 (pins 18/19) carries the battery, inverter,
-charger and shore power. Both are 250 kbit/s. See
-[`hardware-and-tap.md`](docs/hardware-and-tap.md) for the tap, and
+charger and shore power. Both are 250 kbit/s. A companion device needs **both**
+— state of charge, pack current and temperature are only on CAN2. See
+[`hardware-and-tap.md`](docs/hardware-and-tap.md) for the tap and
 [`energy-can2.md`](docs/energy-can2.md) for the energy bus.
-
-A companion device needs **both** buses to be useful — state of charge, pack
-current and temperature are only on CAN2.
 
 Every claim is labelled by how strongly it is supported — `CONFIRMED` means
 observed on the wire, `predicted` means derived but untested. See

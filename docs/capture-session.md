@@ -1,12 +1,12 @@
-# CAN capture session — runbook
+# CAN capture — runbook
 
-Follow this in order, in the van. Each step has a pass/fail check; **don't move
-on until the current step passes.** The goal of session #1 is *listening only*:
-prove we're on the right bus, then crack the PDM output frames that
-[`pdm-control.md`](pdm-control.md) couldn't recover statically.
+How to get on this van's bus and read it, and how the load mapping in
+[`pdm-control.md`](pdm-control.md) was produced. Follow it in order; each step
+has a pass/fail check.
 
-**Nothing here transmits.** The adapter is in listen-only mode the whole time,
-so it physically cannot drive the bus that runs the van's DC system.
+Everything here is **listen-only**. Transmitting is a separate, deliberate act
+— see the safety notes in the [README](../README.md) — but the map has to come
+first, and it comes from listening.
 
 ---
 
@@ -30,10 +30,12 @@ Kernel driver `gs_usb` is already present on this laptop. Nothing else to instal
 
 ## 1. Find the wires (van powered, screen awake)
 
-Back of the head unit, **"CONTROL PANEL"** connector — the small one; the two
-big 35-pin connectors are empty. Look for the **green + yellow twisted pair**.
+Back of the head unit, the populated **23-pin AMPSEAL** connector. Both CAN
+buses are in it — see [`hardware-and-tap.md`](hardware-and-tap.md) for the full
+pinout. CAN1 is the **green + yellow** pair in the accordion-sleeved group;
+CAN2 is the **green + yellow** pair tagged "CONTROL PANEL".
 
-Meter, black probe on van chassis / a black wire, DC volts:
+Meter, black probe on van chassis / a ground wire, DC volts:
 
 | Wire | Expected | Meaning |
 |---|---|---|
@@ -42,13 +44,7 @@ Meter, black probe on van chassis / a black wire, DC volts:
 | either | 0 V flat | wrong wire, or bus asleep |
 | either | ~12 V | that's power — **do not tap it** |
 
-Both sitting near 2.5 V and twitching = live CAN. A second pair (teal/gold) is
-the likely CAN2 — that's the fallback if this pair turns out quiet.
-
-While the meter is already out, also find **+12V and ground** in this same
-bundle (the red and black wires — confirm, don't assume) and write down which is
-which. That's where the companion box gets its power in phase 3; see
-[`hardware-and-tap.md`](hardware-and-tap.md). Nothing to wire today.
+Both sitting near 2.5 V and twitching = live CAN.
 
 > If green/yellow don't behave like this, stop and re-read
 > [`hardware-and-tap.md`](hardware-and-tap.md) rather than guessing.
@@ -60,26 +56,13 @@ T-taps onto the pair — **no cutting**, they clamp over the insulation.
 ```
 CANable CAN_H  ->  YELLOW
 CANable CAN_L  ->  GREEN
-CANable GND    ->  van chassis / black wire     <- do not skip this
-```
-
-The user's own jumper leads carry a mnemonic: **sky = high**, **ocean = low**,
-**ground = black**.
-
-```
-WHITE jumper  <->  van YELLOW  (CAN_H)
-BLUE  jumper  <->  van GREEN   (CAN_L)
-BLACK jumper  <->  van BLACK   (ground)
+CANable GND    ->  van ground (gray, pin 8) / chassis    <- do not skip this
 ```
 
 - **Termination switch OFF.** The bus is already terminated at both ends; a
   third terminator unbalances it.
-- Ground is not optional — without a shared reference the transceiver sees
-  garbage and you'll chase a phantom bitrate problem.
-- Your jumper wire is the white 24 AWG guitar hookup wire. It's thinner than the
-  red TICONN spades' 22–18 AWG range, so **fold the stripped end back on itself**
-  to fill the barrel before crimping, then tug-test each one. Mark one end —
-  both jumpers are white and you do not want to discover a swap later.
+- **Ground is not optional** — without a shared reference the transceiver sees
+  garbage and you will chase a phantom bitrate problem.
 
 ## 3. Bring the interface up
 
@@ -114,16 +97,18 @@ You want to see:
   and J1939 PGNs that look like the ones in [`can-map.md`](can-map.md).
 
 If the heater is simply asleep, no Rixen frames appear — that alone isn't
-failure. Judge it on the J1939 matches instead. If *nothing* matches, you're
-probably on CAN2; move the taps to the teal/gold pair and repeat.
+failure. Judge it on the J1939 matches instead. If *nothing* matches you are
+probably on the other bus; move the taps to the other green/yellow pair in the
+same connector and repeat.
 
 Note the `chg` column: it flags which byte positions actually changed during the
 capture. Constant bytes are padding or config; changing bytes are live data.
 
-## 5. Crack the loads — one at a time
+## 5. Map the loads — one at a time
 
-This is the actual objective. For each load (galley lights, water pump, awning,
-fan…):
+This is the method that produced [`pdm-control.md`](pdm-control.md), and the
+way to check a channel on a van that differs from this one. For each load
+(galley lights, water pump, awning, fan…):
 
 ```bash
 ./tools/can_capture.sh galley_OFF 15     # load OFF, hands off everything else
@@ -155,15 +140,16 @@ ramp rather than a bit flip) and a tank-level change.
 
 ## 6. Wrap up
 
-- Keep every `captures/*.log` — they're git-ignored (raw bus data from the
-  user's van), but they're the raw evidence behind every conclusion.
-- Record confirmed frames in [`can-map.md`](can-map.md) and close out the open
-  question in [`pdm-control.md`](pdm-control.md).
+- Keep every `captures/*.log` — they're git-ignored (raw bus data from a
+  private vehicle), but they are the raw evidence behind every conclusion.
+- Record confirmed frames in [`can-map.md`](can-map.md) and
+  [`pdm-control.md`](pdm-control.md).
 
-## What session #2 looks like (not now)
+## Before transmitting
 
-Only once the map is confirmed: re-run `can_up.sh 250000 --tx` and send a single
-frame to a harmless load with the van in a safe state. Transmitting is a real
-step up in risk — the same computer runs the van's DC electrical system — so it
-gets its own session, its own plan, and a load chosen so that the worst case is
-a light turning on.
+Transmitting is a real step up in risk — the same computer runs the van's DC
+electrical system. Bring the interface up with `can_up.sh 250000 --tx` only
+once the map is confirmed, and choose a first target so the worst case is a
+light coming on: not a motor moving, not a heater igniting, not a pump running
+dry. What the companion controller does and does not command, and why, is in
+the [README](../README.md).

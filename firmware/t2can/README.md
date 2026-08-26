@@ -1,11 +1,14 @@
-# firmware/t2can — the companion-box firmware
+# firmware/t2can — the companion controller's firmware
 
-Canonical home of the T-2CAN-FD (ESP32-S3) firmware. **This copy is the backup
-of record** — the working copy lives in `/tmp/T-2Can` (a clone of
-[Xinyuan-LilyGO/T-2Can](https://github.com/Xinyuan-LilyGO/T-2Can)) and is
-copied here on milestone days. `/tmp` is scratch space; edit there, land here.
+The T-2CAN-FD (ESP32-S3) firmware, vendored in full: the app, the earlier
+milestone sketches, and the MCP2518FD library it depends on. Derived from
+[Xinyuan-LilyGO/T-2Can](https://github.com/Xinyuan-LilyGO/T-2Can).
 
-Vendored 2026-08-24 so a `/tmp` cleanup can't take the phase-2 work with it.
+The library is vendored rather than pulled from upstream because two bugs in
+LILYGO's stock example for this board silently break CAN work on it — see
+[`docs/t2can-bench.md`](../../docs/t2can-bench.md).
+
+Build with `pio run` from this directory; flash with `pio run -t upload`.
 
 ## Contents
 
@@ -30,8 +33,8 @@ Vendored 2026-08-24 so a `/tmp` cleanup can't take the phase-2 work with it.
   trap: building `-e <env>` compiles the DEFAULT env's example unless
   `default_envs` is changed first.
 
-Build: `pio run` (PlatformIO Core ≥ 6.1) from `firmware/t2can/`, with
-`default_envs` set to whichever example you're flashing.
+Requires PlatformIO Core ≥ 6.1. Set `default_envs` to whichever example you
+are flashing — note the `src_dir` trap described above.
 
 ## Deployment state (2026-08-25)
 

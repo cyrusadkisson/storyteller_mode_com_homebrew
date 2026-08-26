@@ -11,7 +11,7 @@ MIT; the *facts* below are protocol observations, not copied code).
 
 **Why it matters us:** (1) independent corroboration of our entire CAN map;
 (2) a second, complementary **control strategy** that solves the persistence
-problem we found; (3) working reference hardware/software for phase 3.
+problem we found; (3) a working reference implementation to check ours against.
 
 ## 1. ID map — full agreement (strip the 0x80000000 extended-flag bit)
 
@@ -115,7 +115,7 @@ flickering `0b10` on the wire (confirmed: 50 press frames in 1 s, HU never
 commanded DO5). Toggle switches (cabin/garage/water pump) work fine off a
 single pulse. Control of hold-to-run loads (sink drain now; awning motor
 untested, do not assume) requires the **cut-and-stand-in** architecture
-(rewrite the panel's commands in flight) — parked as a phase-3 milestone.
+(rewrite the panel's commands in flight), which this parallel tap cannot do.
 Drain parked manual-only by owner decision.
 
 Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
@@ -152,7 +152,7 @@ UI cap, not protocol). His trace shows `0x19FEF903` **repeating** during
 operation — so the HU may re-broadcast the thermostat command periodically
 when climate is active, not strictly on-change; recheck.
 
-## 5. Synthesis for phase 3 (the design this suggests)
+## 5. Synthesis — the design this suggests
 
 | Need | Method | Source |
 |---|---|---|
