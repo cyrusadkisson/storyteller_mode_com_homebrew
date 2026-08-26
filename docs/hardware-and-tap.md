@@ -109,33 +109,20 @@ right there in the same connector.
 | Part | Needed for | Note |
 |---|---|---|
 | **LILYGO T-2CAN-FD** (ESP32-S3) | the companion box | **Two independent CAN interfaces**, which this van requires — CAN1 for loads/climate, CAN2 for battery. MCP2518FD over SPI + the ESP32's own TWAI, both on isolated TD501MCAN transceivers. ~$25-30. |
-| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | Tap the CAN pairs without cutting. Four for CAN only; six if you also tap +12V and ground. |
-| **Hook-up wire, 22-24 AWG** | CAN runs | CAN is signal-level (µA); gauge is about handling, not current. |
-| **Hook-up wire, 20-22 AWG** | +12V / ground, if hard-wiring | Sized for the fuse, not the load — the box draws well under 0.5 A. |
-| **Inline fuse holder + 1 A fuse** | the +12V tap | **Not optional.** See the warning below. |
-| **Multimeter** | wiring | Confirm the CAN pair and the power pair before connecting anything. |
-| **CANable** USB-CAN adapter | reverse engineering / debugging | See "Is the CANable optional?" below. |
-| USB-C cable (**data**, not charge-only) | flashing + power | A charge-only cable powers the board fine and silently fails to enumerate — an easy hour to lose. |
+| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | Four of them — CAN-H and CAN-L on each bus. Taps the pairs without cutting. |
+| **Hook-up wire, 22-24 AWG** | the runs from tap to box | CAN is signal-level (µA); gauge is about handling, not current. |
+| USB-C cable (**data**, not charge-only) | power + flashing | A charge-only cable powers the board fine and silently fails to enumerate — an easy hour to lose. |
+| **CANable** USB-CAN adapter | development only | See below. Not needed to install a working box. |
 
-Not needed for this path: the M12 cable, or a mating breakout connector.
+That is the whole list. Not needed: the M12 cable, a mating breakout
+connector, or anything for 12V wiring.
 
 ### Powering the T-2CAN
 
-The T-2CAN-FD has **no 12V screw terminal — it is USB-C powered.** Two
-options:
-
-- **A van USB outlet.** What we run today. Simplest, and if the outlet is
-  switched with the house system the box sleeps with the van. Verify whether
-  your outlet stays hot in storage, or it becomes a parasitic drain.
-- **A hard-wired 12V tap**, +12V and ground from the same connector bundle
-  you tapped for CAN, through a 12V→5V buck converter into USB-C.
-
-> **Fuse the +12V leg if you hard-wire it. 1 A, inline.** Thin wire on an
-> unfused 12V tap becomes the fuse when it chafes — buried in a harness
-> behind a panel. ~$8 removes the risk entirely.
-
-**Meter the power pair** before connecting. Confirm which wire reads ~12.6 V
-and which is ground; don't trust colour alone.
+**USB-C from a van outlet.** The board has no 12V terminal, and at well under
+0.5 A there is no reason to build a 12V feed for it. If your outlet is
+switched with the house system the box sleeps with the van; if it stays hot in
+storage it is a small parasitic drain, worth knowing either way.
 
 ### Is the CANable optional?
 
