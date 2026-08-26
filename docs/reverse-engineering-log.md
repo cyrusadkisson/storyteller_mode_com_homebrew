@@ -242,3 +242,39 @@ PDM2 output DO9 (`HVAC_POWER`), a DC unit, unlike our 120 V inverter-fed roof.
   "AC OFF" switch writes `0x19FEF903` byte 1 = `0x04` (vs `0x01` = on,
   `0x00` = off), and `0x19FFE258` echoes it. This corrects the earlier
   "compressor is autonomous and invisible" conclusion in climate-control.md.
+
+## 2026-08-26 — The companion box is built and in the van
+
+**Hardware:** LILYGO T-2CAN-FD (ESP32-S3), two independent CAN controllers —
+MCP2518FD on CAN1, the ESP32's TWAI on CAN2 — both isolated. A dual-CAN board
+became necessary once the battery/inverter turned out to live on CAN2.
+Firmware vendored in `firmware/t2can/`.
+
+**Working control surface** (all wire-verified on the van):
+
+| Subsystem | Method |
+|---|---|
+| Cabin, garage, awning light, aux, water pump, recirc | wall-switch **input spoof** — the head unit toggles and holds it |
+| Roof A/C: off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write as SA `0x03`, echoed on `0x19FFE258` |
+| Roof vent: lid, fan, airflow, speed | direct write `0x19FEA603` |
+| Inverter | single-shot latch on CAN2 |
+| Read-only | per-channel levels + feedback amps, tanks, battery/SoC, AC line, temps, PDM faults, Rixen state |
+
+**Deliberately out of scope**, each for a measured reason:
+
+- **Dimming** — holding a level means out-transmitting the head unit at ~250 Hz
+  (~+50% bus load). Rejected on bus safety. See `pdm-control.md`.
+- **Reading lights** — no digital input exists for DO3 at all, so there is
+  nothing to spoof and a direct write is overwritten in ~11 ms.
+- **Rixen writes** — accepted by the heater in ~300 ms, but reverted by the
+  head unit within ~5 s. Holding one would oscillate a diesel burner's
+  setpoint. Read-only instead. See `climate-control.md`.
+- **Sink drain, awning motor** — owner decision / hardware removed.
+
+All three would need the **cut-and-stand-in** architecture (box inline, owning
+the channel) rather than a parallel tap.
+
+**Corrections:** the head unit re-asserts PDM state at ~91 Hz (not the ~45 Hz
+previously recorded); the vent's "in motion" flag lags a lid command by ~4 s;
+"a companion app never needs to emulate a switch" is exactly backwards for a
+parallel tap.

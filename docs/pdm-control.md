@@ -372,37 +372,13 @@ Pressing one does **not** emit a new message type. The PDM reports the input,
 the head unit runs its scene logic, and then writes the ordinary output frame
 we already decoded.
 
-> **SUPERSEDED (2026-08-24/25).** The original conclusion here — "a companion
-> app never needs to emulate a switch, it writes outputs directly" — is
-> **exactly backwards** for a parallel tap. Writing outputs directly does not
-> persist (the HU overwrites within ~11 ms) and holding them means
-> out-transmitting the head unit, which we rejected on bus-safety grounds.
-> **Emulating the switch input is the only method that persists**, because it
-> makes the HU change its own mind and hold the new state itself. See
-> `modewifi-analysis.md` §2. The corollary is the reading-light finding below:
-> a channel with no input cannot be controlled from a parallel tap at all.
-
-## Aux1 = the owner's perimeter DC lights
-
-```
-539,PDM2.DO12.Aux1Switch,%,OUTPUT,PDM2
-```
-
-Unit is **`%`**, and the dictionary carries `Aux1 On/Off/Max/Ramp`,
-`TM Aux1Ramp`, `CE PDM2.DO12.Aux1 Ramp` — so this is a **ramping level
-channel**, not a plain switch.
-
-**Wire location: `0x14EF1F11` mux `FD` byte 6.** Reads `00` in all captures so
-far (lights off). This is an owner-installed load wired to the aux1 port, so
-it matters more than most for the companion app.
-
-## PDM1 DO8 / DO9 — likely awning motor
-
-The only unnamed PDM1 channels sit immediately after `DO7 AwningEnabled`, which
-makes awning motor out/in the obvious candidates. Normally driving an unknown
-motor channel would be reckless — but **the awning has been physically removed
-from this van**, so the outputs drive nothing. Safe to identify by pressing the
-galley awning out/in buttons and watching `0x14EF1E11[FD]` bytes 2 and 3.
+**Emulating the switch input is how a parallel tap controls a load.** Writing
+the output directly does not persist — the head unit overwrites it within
+~11 ms — and holding it would mean out-transmitting the head unit. Spoofing
+the input instead makes the HU change its own mind and hold the new state
+itself. See `modewifi-analysis.md` §2. The corollary is the reading-light
+finding below: a channel with **no** digital input cannot be controlled from a
+parallel tap at all.
 
 ## Aux1 confirmed — perimeter lights (2026-08-11)
 
@@ -616,17 +592,11 @@ CANable on CAN1 (pins 5/6), brought up TX-capable via `./tools/can_up.sh --tx`
 survives down/up unless explicitly cleared with `listen-only off`; an earlier
 revision of the script lied about this).
 
-**Baseline facts:** `0x14EF1E11[FC]` was broadcasting continuously at **~45 Hz**
-(cabin lights were on at `0x26`). The head unit does not send on change — it
-*re-asserts its entire state every ~22 ms*. Whole bus ~450 fps.
-
-> **CORRECTION (2026-08-25, measured):** the FC frame actually runs at
-> **~91 Hz (~11 ms)**, double the rate recorded above — measured over a 6 s
-> census: `14EF1E11` 137 Hz total, of which mux `FC` is ~91 Hz and `FD` ~46 Hz.
-> Frames also arrive in bursts (sub-millisecond deltas within a burst), so
-> there is **no dependable 22 ms quiet gap to inject into**. This invalidates
-> the timing assumption behind shadow-injection-based dimming; see
-> "Dimming abandoned" below.
+**Baseline facts:** `0x14EF1E11[FC]` broadcasts continuously at **~91 Hz**
+(~11 ms), in bursts rather than at a steady period. The head unit does not send
+on change — it *re-asserts its entire state* on that cycle. Whole bus ~500 fps.
+There is **no dependable quiet gap to inject into**, which is what rules out
+holding a value from a parallel tap.
 
 ## Test 1 — no-op (PASSED)
 
@@ -649,10 +619,9 @@ arbitrate, they never collide into bit errors.)
 ## Test 3 — shadow injection, SA 0x11 (SUCCESS)
 
 Tool: [`tools/can_shadow.py`](../tools/can_shadow.py). Listens for the head
-unit's own frame, then transmits immediately **behind** it, inside what was
-then believed to be a 22 ms quiet gap, from SA 0x11. (The gap is really ~11 ms
-and bursty — see the 2026-08-25 correction above; the bench test still
-succeeded because it only had to land *once*, not hold.) Payload = copy of the live frame with exactly one
+unit's own frame, then transmits immediately **behind** it, from SA 0x11. The
+gap is ~11 ms and bursty, so this lands a *single* change reliably but cannot
+**hold** one — see "Dimming abandoned" below. Payload = copy of the live frame with exactly one
 byte changed (byte 4 = Cabinlights). Timing off the observed frame keeps
 collision odds near zero — same-id/different-data overlap is the one thing on
 CAN that produces error frames.
@@ -669,9 +638,8 @@ unchanged, no restarts.
 ## What this means for the companion box (phase 3)
 
 1. **Writes must impersonate SA 0x11.** Only that address is obeyed.
-2. **Nothing persists by itself.** The head unit re-asserts every ~11 ms
-   (measured 2026-08-25; ~22 ms was the original, wrong figure), so a one-shot
-   write holds for at most one cycle. Holding a state would mean injecting
+2. **Nothing persists by itself.** The head unit re-asserts every ~11 ms, so a
+   one-shot write holds for at most one cycle. Holding a state would mean injecting
    continuously at a rate that out-runs the HU — **rejected on bus-safety
    grounds, see "Dimming abandoned"**. The same physics is the safety net: a
    crashed box stops transmitting and the stock system is unaffected.

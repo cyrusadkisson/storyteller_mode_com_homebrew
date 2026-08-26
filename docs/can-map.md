@@ -118,17 +118,19 @@ Extended ids decode as `priority(3) | PGN(18) | source-address(8)`. Source
 addresses seen: `0x46` head unit, `0xE1` inverter/charger, `0x58` AC unit,
 `0xAF` tank monitor, `0x03` thermostat side, `0x00` broadcast/command source.
 
-## Next steps
+## Coverage
 
-1. **PDM output protocol** — reverse `app/PDM-Manager` (J1939) to learn how
-   lights/pumps/fans are commanded; see [`pdm-control.md`](pdm-control.md)
-   (needs a live capture or an ARM disassembler to finish).
-2. **Per-signal names** — messages with many signals (BMS info ×26, vent ×13)
-   have bit layouts but not individual names yet; resolve the signal-id → name
-   linkage or infer from J1939/RV-C standards + the signal dictionary.
-3. **Port assignment** — decode which messages are on can0 vs can1.
-4. **Live capture** — validate the whole map on the bus; start with the known
-   Rixen `0x724`/`0x788` frames to prove the capture rig before decoding unknowns.
+The map is bus-validated end to end.
+
+- **PDM output protocol** — command frames, mux layout, per-channel levels,
+  feedback amps, and the input-spoof control method are in
+  [`pdm-control.md`](pdm-control.md).
+- **Signal names** — resolved for everything the app uses (tanks, climate,
+  vent, battery/inverter). Some unused BMS sub-signals have bit layouts but no
+  individual names.
+- **Port assignment** — CAN1 = pins 5/6 (loads, tanks, climate, Rixen);
+  CAN2 = pins 18/19 (battery, inverter, charger). See
+  [`energy-can2.md`](energy-can2.md).
 
 ---
 

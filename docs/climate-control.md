@@ -245,10 +245,9 @@ Close transit, fully timed:
 
 Open transit: ~10–11 s, measured on two independent runs.
 
-### The "in motion" flag LAGS the command by ~4 s (2026-08-26)
+### The "in motion" flag lags the command by ~4 s
 
-Visible in both runs above but not previously called out, and it caused two
-app bugs:
+Visible in both runs above, and the cause of two app bugs:
 
 ```
 open  command at 0.00  ->  MOVING at 3.60   (3.6 s)
@@ -371,12 +370,10 @@ units, so 78 °F → 25.6 °C → 78.08 °F.
 **The deadband is now observed, not inferred.** Nothing further outstanding on
 the setpoint encoding.
 
-## Rixen writes ARE accepted — the obstacle is persistence (2026-08-26)
+## Rixen writes are accepted — the obstacle is persistence
 
-Earlier notes recorded that the Rixen target "was never accepted" when we
-transmitted `0x788[01]`. **That was wrong**, and the error was in the testing,
-not the protocol: nobody watched the ~3 s window before the head unit reverted
-the value.
+The heater acts on our `0x788[01]` target immediately; what defeats a write is
+the head unit re-asserting its own value a few seconds later.
 
 Measured with a single frame (`cansend can0 788#010B010000000000`, target
 80.1 °F) against a `candump` of `0x724` + `0x788`:

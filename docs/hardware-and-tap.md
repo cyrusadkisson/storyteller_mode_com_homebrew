@@ -106,54 +106,60 @@ right there in the same connector.
 
 ## Parts
 
-| Part | Phase | Note |
+| Part | Needed for | Note |
 |---|---|---|
-| **CANable** USB‑CAN adapter (candleLight → native SocketCAN) | 1–2 | the listening rig; `candump`/`cansniffer` work out of the box |
-| **T‑tap / Posi‑Tap** connectors for ~18–20 AWG | 1–3 | tap green/yellow without cutting |
-| **Multimeter** | 1 | confirm the CAN pair before wiring |
-| **Waveshare ESP32‑S3‑RS485‑CAN** industrial board | 3 | the companion box — see below |
-| **Inline fuse holder + 1 A fuse** | 3 | on the box's +12V tap. Not optional. |
+| **LILYGO T-2CAN-FD** (ESP32-S3) | the companion box | **Two independent CAN interfaces**, which this van requires — CAN1 for loads/climate, CAN2 for battery. MCP2518FD over SPI + the ESP32's own TWAI, both on isolated TD501MCAN transceivers. ~$25-30. |
+| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | Tap the CAN pairs without cutting. Four for CAN only; six if you also tap +12V and ground. |
+| **Hook-up wire, 22-24 AWG** | CAN runs | CAN is signal-level (µA); gauge is about handling, not current. |
+| **Hook-up wire, 20-22 AWG** | +12V / ground, if hard-wiring | Sized for the fuse, not the load — the box draws well under 0.5 A. |
+| **Inline fuse holder + 1 A fuse** | the +12V tap | **Not optional.** See the warning below. |
+| **Multimeter** | wiring | Confirm the CAN pair and the power pair before connecting anything. |
+| **CANable** USB-CAN adapter | reverse engineering / debugging | See "Is the CANable optional?" below. |
+| USB-C cable (**data**, not charge-only) | flashing + power | A charge-only cable powers the board fine and silently fails to enumerate — an easy hour to lose. |
 
 Not needed for this path: the M12 cable, or a mating breakout connector.
 
-## The companion box (phase 3)
+### Powering the T-2CAN
 
-**Waveshare ESP32‑S3‑RS485‑CAN** industrial control board (~$22–25, ordered
-2026‑08‑10). Chosen over a bare ESP32 + transceiver because the things that
-matter in a vehicle are already on it:
+The T-2CAN-FD has **no 12V screw terminal — it is USB-C powered.** Two
+options:
 
-| | |
-|---|---|
-| Power in | **7–36V** screw terminal (raw van 12V direct, no buck converter) + USB‑C 5V |
-| CAN | **Isolated**, TVS/surge/ESD protected, screw terminals |
-| Termination | 120Ω **NC by default**, enabled via jumper → leave it alone, bus is already terminated |
-| Wireless | WiFi + Bluetooth 5 LE (ESP32‑S3 ⇒ BLE only, no BT Classic — irrelevant, iOS can't use SPP anyway) |
-| Enclosure | DIN‑rail case included |
-| Bonus | isolated RS485 — the van also runs MODBUS |
+- **A van USB outlet.** What we run today. Simplest, and if the outlet is
+  switched with the house system the box sleeps with the van. Verify whether
+  your outlet stays hot in storage, or it becomes a parasitic drain.
+- **A hard-wired 12V tap**, +12V and ground from the same connector bundle
+  you tapped for CAN, through a 12V→5V buck converter into USB-C.
 
-Rejected: bare ESP32 / XIAO ESP32C6 (**no CAN transceiver** — the SoC has a
-controller, but that's only half of it — and no 12V input); Autosport Labs
-ESP32‑CAN‑X2 (good board, dual CAN, but $55, JST pigtails, and termination is
-**on** by default); Raspberry Pi (SD‑card corruption on unclean power cut is the
-classic vehicle failure mode, plus ~30 s boot and 20× the current draw).
+> **Fuse the +12V leg if you hard-wire it. 1 A, inline.** Thin wire on an
+> unfused 12V tap becomes the fuse when it chafes — buried in a harness
+> behind a panel. ~$8 removes the risk entirely.
 
-### Powering it
+**Meter the power pair** before connecting. Confirm which wire reads ~12.6 V
+and which is ground; don't trust colour alone.
 
-- **Bench / phase 2:** USB‑C from the laptop. Nothing to solve yet.
-- **In the van / phase 3:** T‑tap **+12V and ground from the same CONTROL PANEL
-  connector** you're already tapping for CAN — the red and black wires in that
-  bundle. Two more taps in a bundle you're already in.
-  - It then wakes and sleeps with the head unit → **no parasitic drain** while
-    the van is stored.
-  - The **isolated** CAN side means powering from here can't create a ground
-    loop with the bus tap.
+### Is the CANable optional?
 
-> **Fuse the +12V leg. 1 A, inline.** 24 AWG is fine for CAN (a signal, ~µA),
-> but on an *unfused* 12V tap it becomes the fuse if it ever chafes — buried
-> in a harness behind a panel. ~$8 removes the risk entirely.
+**For an install, yes** — the T-2CAN reads both buses itself, so a finished
+box with known-good firmware does not need it.
 
-**Meter the power pair too** — same session as the CAN check. Confirm which wire
-actually reads ~12.6V and which is ground. Don't trust colour alone on power.
+**For any development or debugging, no.** The companion box can only report
+what it *believes*, and the failure mode that costs the most time is the box
+being confidently wrong. Every significant firmware bug found so far needed an
+independent view of the wire:
+
+- a firmware decode writing DO7-12 levels into channels 1-6 (the app showed
+  every button blinking; the box's own state said everything was fine),
+- the head unit's true re-assert rate (~91 Hz, not the ~45 Hz recorded), which
+  invalidated the whole approach to dimming,
+- the A/C fan byte map, captured from panel presses,
+- proof that the Rixen *does* accept our writes and only loses them to the
+  head unit's re-assert,
+- proof that the reading lights have no digital input at all.
+
+If your van is identical to this one and you are flashing a known-good image,
+skip it. If anything differs — and the one other owner project we know of
+runs a different bitrate and a different awning wiring — it is the difference
+between debugging and guessing.
 
 ## Two paths, kept separate
 
@@ -194,15 +200,10 @@ dashboard — is on CAN2.** Any useful companion device needs both buses:
 - CAN1 to control lights, pumps, fridge, fans and read tanks/climate
 - CAN2 to read battery SoC, inverter and charger state
 
-The **Waveshare ESP32-S3-RS485-CAN has one CAN interface.** Its second port is
-RS485, which does not help here. Options, in order of preference:
-
-1. **Autosport Labs ESP32-CAN-X2** (~$55) — two independent CAN controllers on
-   one board, 6–20V automotive input. This is now clearly the right part; it
-   was the runner-up earlier only because we could not yet show CAN2 was needed.
-2. Two Waveshare boards, one per bus, bridged over WiFi. Cheaper if the first
-   is already in hand, but two devices to power, mount and keep in sync.
-3. Single Waveshare on CAN1 only — full control of loads, **no battery data**.
+This is why the box needs **two CAN interfaces**. A single-CAN board could
+control loads but never show battery state. The **LILYGO T-2CAN-FD** carries
+two independent controllers: CAN1 on the MCP2518FD, CAN2 on the ESP32's
+built-in TWAI.
 
 **Verify before buying:** tap CAN2 with the existing CANable first and confirm
 the BMS and inverter are actually there. Moving two T-taps costs nothing.

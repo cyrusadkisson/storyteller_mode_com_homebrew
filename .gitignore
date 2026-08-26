@@ -35,6 +35,18 @@ images/
 *.MACRO_FOCUS.jpg
 
 # ---------------------------------------------------------------------------
+# Video: demo recordings and everything derived from them. Raw phone footage
+# runs to hundreds of MB per file and shows the van interior. Keep local.
+# ---------------------------------------------------------------------------
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v
+*.webm
+*.mts
+
+# ---------------------------------------------------------------------------
 # Tooling / local config
 # ---------------------------------------------------------------------------
 .claude/settings.local.json
