@@ -81,10 +81,20 @@ got there.
 
 ## Why the CAN bus (and not USB/Wi‑Fi/Bluetooth)
 
-- The cabinet **USB port is host‑only** (for update sticks) — a computer plugged
-  in doesn't enumerate.
-- The firmware contains **Wi‑Fi/Bluetooth** apps, but those radios are **not
-  active** on this unit and there's no UI to enable them.
+- **The USB port doesn't lead anywhere.** There is a USB pigtail running from
+  the back of the panel up into the overhead cabinet, and it looks like the
+  obvious way in — but it is a **host** port, the same kind as on a laptop.
+  It exists to read firmware updates and media off a **USB stick**. Plugging a
+  computer into it connects two hosts together, which does nothing: neither
+  side will talk. Tested directly — a Linux laptop on that port produced no
+  new device at all, on plug or replug. There is no software fix; it is what
+  the port is wired to be. (A USB device port, the kind a phone has, is what
+  would have been needed.)
+- **The Wi‑Fi and Bluetooth radios are dormant.** The firmware carries the
+  apps for both — BLE, Bluetooth serial, a network launcher, `hostapd` — but
+  the panel offers no setting to switch either on, and none has ever been seen
+  broadcasting. Waking them would mean modifying the signed factory firmware,
+  which is the exact risk this project avoids.
 - The **CAN bus is always live** and is the real control surface. Every load is a
   named signal on it, and the firmware ships the full **signal dictionary**
   ([`DeviceInformationAll.pbuff`]) that names them all. That's our map.
