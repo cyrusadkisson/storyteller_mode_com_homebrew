@@ -32,8 +32,10 @@ His DO map matches ours (WaterPump DO12, GalleyFan PDM2/DO2, Fridge PDM2/DO3,
 TankMonitor PDM2/DO7, SwitchPower PDM2/DO8, Macerator PDM2/DO11 = our
 confirmed SinkPump, Aux PDM2/DO12 = our confirmed Aux1). **Additions we didn't
 have:** PDM1 **DI8 = "Engine Running"** (ignition!), PDM2 **DO4 = 12V/USB**
-outlet. Discrepancies: he places Awning Lights on PDM2 DO5 — we have it
-CONFIRMED on PDM1 DO5, and PDM2 DO5 is the awning MOTOR on our van. His van
+outlet. Discrepancies: he places Awning Lights on PDM2 DO5, while the frame evidence
+here puts them on PDM1 DO5 with PDM2 DO5 as the awning MOTOR. Neither is
+confirmed against a load on this van — the awning is physically absent — so
+his placement may simply be right for his van, or for both. His van
 may differ (he also has a second fan node at **SA 0xC1**:
 `0x19FEA7C1`/`0x19FECAC1` — not seen on ours). Per the README disclaimer:
 verify per-van.
@@ -42,8 +44,7 @@ verify per-van.
 
 We proved the PDM obeys output commands **only from the head unit (SA 0x11)**
 and that one-shot writes are overwritten by the HU's re-broadcast within
-~11 ms (measured 2026-08-25; the ~45 Hz / 22 ms figure recorded earlier was
-wrong — mux `FC` actually runs at ~91 Hz). His solution is to never command outputs at all:
+~11 ms — mux `FC` runs at ~91 Hz. His solution is to never command outputs at all:
 
 1. The PDM broadcasts **digital-input status** frames: `0x14EF111E` mux
    **`F0`** (DI1–6) and **`F8`** (DI7–12), carrying the wall-switch states as

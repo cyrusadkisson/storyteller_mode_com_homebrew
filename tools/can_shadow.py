@@ -1,9 +1,14 @@
 """Shadow-inject a PDM command right behind the head unit's own frame.
 
-The head unit re-broadcasts the PDM command frames (~0x14EF1E11) at ~45 Hz, so
-any single command we send is overwritten within ~22 ms. This tool listens for
-the head unit's frame and sends OUR version immediately after it, inside its
-quiet gap, with the same source address (0x11). That is the only source the
+The head unit re-broadcasts the PDM command frames (~0x14EF1E11) at ~91 Hz, so
+any single command we send is overwritten within ~11 ms. This tool listens for
+the head unit's frame and sends OUR version immediately after it, with the same
+source address (0x11).
+
+NOTE: this lands a *momentary* change reliably. It cannot HOLD a value -- the
+frames arrive in bursts with no dependable quiet gap, so holding one would mean
+continuously out-transmitting the head unit on its own id. See "Dimming
+abandoned" in docs/pdm-control.md for why that was rejected. That is the only source the
 PDM has been shown to obey, and timing off the observed frame keeps the
 collision odds near zero (a collision would produce a CAN error frame; a few
 are self-healing, a battle is not — which is why this is bounded).

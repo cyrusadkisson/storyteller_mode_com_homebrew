@@ -174,7 +174,7 @@ capture put them on **byte 4**. So:
 > **byte index = DO number**, and **PDM at SA `0x1E` is PDM1**, `0x1F` is PDM2.
 > Command mux `FC` carries DO1–DO6 in bytes 1–6; mux `FD` carries DO7–DO12.
 
-## Why this is trustworthy without testing every load
+## Why the byte→channel alignment is trustworthy
 
 Five independent cross-checks: every channel the map says is powered on is a
 subsystem we can *separately* see transmitting on the bus.
@@ -190,10 +190,19 @@ subsystem we can *separately* see transmitting on the bus.
 A wrong byte→channel alignment would not produce five coincidences that all
 agree with the rest of the bus.
 
+**This validates the alignment, not every name.** A channel whose load has
+never been switched carries the dictionary's name for that DO number, which is
+an inference — a good one, but not an observation. The CSV's `confirmed` column
+says which is which per channel; anything below `CONFIRMED` should be treated
+as a lead, not a fact, and verified before it is relied on.
+
 ## The map
 
-Full table: [`data/pdm_channels.csv`](../data/pdm_channels.csv) — 24 channels,
-15 named, 1 confirmed on the wire, 9 unnamed in the firmware dictionary.
+Full table: [`data/pdm_channels.csv`](../data/pdm_channels.csv) — 24 channels:
+18 named from the firmware dictionary, 6 unnamed there. Of the named ones,
+7 are confirmed by watching the load respond, 3 have confirmed frames but a
+load that cannot be observed on this van (the awning), 3 are standing power
+feeds, and 5 are inferred from the dictionary plus corroborating bus traffic.
 
 **PDM1 — SA `0x1E`, command id `0x14EF1E11`**
 
@@ -455,6 +464,13 @@ latches — it holds its commanded direction until something writes `0x00`.
 
 ## Bidirectional motor channel — the awning (2026-08-11)
 
+> **The awning is physically absent from this van.** Everything below is the
+> head unit's own command stream, captured while pressing the panel's awning
+> controls — the frames are certain, but no motor or light was ever seen to
+> respond, and the channel assignments have not been checked against a working
+> awning. ModeWifi places the awning *lights* on PDM2 DO5 instead; that
+> disagreement is unresolved. Treat this section as a strong lead.
+
 **Prediction that failed:** PDM1 `DO8`/`DO9`, sitting right after
 `DO7 AwningEnabled`, were the obvious candidates for awning motor out/in.
 They never moved. The motor is on **PDM2 `DO5`** — a channel with no name in
@@ -645,11 +661,10 @@ parallel tap:
   That is precisely the condition this document warns produces bus errors,
   and it is not an acceptable risk on a live vehicle bus for a comfort feature.
 
-**Decision (owner, 2026-08-25): dimming is out of scope for the parallel tap.**
-Brightness stays on the factory panel. The app shows each light's level
-read-only. If dimming is ever wanted from the app it needs the
-**cut-and-stand-in** architecture (box inline, owning the channel outright) —
-a wiring change, not a firmware change.
+**Dimming is out of scope for the parallel tap** (owner decision). Brightness
+stays on the factory panel; the companion app does not set or display levels.
+Dimming from an app needs the **cut-and-stand-in** architecture — box inline,
+owning the channel outright — which is a wiring change, not a firmware one.
 
 Note this does not affect on/off: the wall-switch **input spoof** toggles
 lights with no injection at all, and the HU holds the state itself. Only the

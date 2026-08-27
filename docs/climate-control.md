@@ -40,9 +40,9 @@ Ten sub‑commands share this id, selected by byte 0. Payload starts at byte 1.
 | mux | sub‑command | width | confirmed |
 |---|---|---|---|
 | `01` | **Set TempTarget** | 16‑bit, units 0.1 °C | ✅ raw 100 = 50 °F → raw 322 = 90 °F, echoed in `0x724` b2‑3 |
-| `02` | Set FanSpeed *(likely)* | 8‑bit | observed `00` → `0F` |
-| `03` | Set Furnace *(likely)* | 8‑bit | observed `00` → `01` |
-| `06` | Set Hot Water *(likely)* | 1‑bit | present, unchanged |
+| `02` | **Set FanSpeed** | 8‑bit | ✅ tracks the furnace: `0` → `15` on, `0` when switched away |
+| `03` | **Set Furnace** | 8‑bit | ✅ `0` → `1` on fuel heat, `1` → `0` on switch to electric |
+| `06` | Set Hot Water *(inferred)* | 1‑bit | present in the stream, **never observed changing** |
 | `0C` | **Send Amb Temp** | 16‑bit, ×0.03125, offset −273 → °C | ✅ 31.66 °C → 32.22 °C = 90.0 °F |
 
 `0C` is confirmed beyond doubt: no other sub‑command carries the

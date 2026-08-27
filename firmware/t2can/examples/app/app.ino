@@ -6,22 +6,28 @@
  *
  *   Phone joins the AP, opens http://192.168.4.1 (or http://van.local).
  *
- *   CONTROL SURFACE — every command here is verified live on the van
- *   (docs/reverse-engineering-log.md 2026-08-24):
- *     - 6 wall-switch toggles via the input spoof (impersonate the PDM's
- *       F0/F8 digital-input frames; the HU toggles and re-broadcasts, so
- *       persistence is free)        — docs/modewifi-analysis.md §2
- *     - A/C on/off + cool/heat setpoints + compressor on/off (0x19FEF903,
- *       echoed/verifiable on 0x19FFE258)   — docs/climate-control.md
- *     - vent open/close, fan speed, air direction (0x19FEA603, echoed on
- *       0x19FEA758)
- *     - inverter on/off on CAN2 (0x19FFD3F2, single-shot latch)
- *   READ-ONLY state: HU's own command broadcasts (per-channel levels),
- *   per-channel feedback amps, tanks, battery DC status, inverter AC stats,
- *   interior/ambient temperature, PDM fault frames.
+ *   CONTROL SURFACE — wire-verified on this van unless noted:
+ *     - wall-switch toggles via the input spoof (impersonate the PDM's F0/F8
+ *       digital-input frames; the HU toggles and re-broadcasts, so persistence
+ *       is free) — cabin, garage, aux, water pump, recirc are confirmed.
+ *       The awning light uses the same mechanism but is UNCONFIRMED: the
+ *       awning is physically absent from this van, so only the HU's command
+ *       byte can be watched.        — docs/modewifi-analysis.md §2
+ *     - A/C off/cool/heat, compressor, fan auto/low/high, and the COOL
+ *       setpoint (0x19FEF903, echoed on 0x19FFE258). The heat setpoint is
+ *       decoded but has no control here.   — docs/climate-control.md
+ *     - vent lid, fan on/off, air direction, fan speed (0x19FEA603, echoed on
+ *       0x19FEA758). Fan run state is COMMANDED, never inferred: status byte 2
+ *       oscillates to 0 while the fan runs.
+ *     - inverter on/off on CAN2 (0x19FFD3F2, single-shot latch). No status
+ *       echo exists, so the AC line voltage is the truth check.
+ *   READ-ONLY: per-channel feedback amps, tanks, battery DC status, inverter
+ *   AC stats, interior temperature, PDM fault frames, Rixen heater state.
  *
- *   NOT included (architecture-blocked on a parallel tap, by design):
- *   dimming, reading lights, sink drain — need cut-and-stand-in.
+ *   NOT included, each for a measured reason (see the docs): dimming and
+ *   reading lights (cannot hold a PDM output from a parallel tap), Rixen
+ *   writes (accepted, but the HU reverts them within ~5 s), sink drain
+ *   (hold-to-run cannot be sustained). All need cut-and-stand-in.
  *
  *   The panel screen is a ONE-WAY DISPLAY: it never shows what we command.
  *   This UI reads truth from the bus, never from the panel.
@@ -61,7 +67,7 @@ DNSServer dns;                      // captive portal: any DNS answer -> our IP
 // ----- CAN ids --------------------------------------------------------------
 static const uint32_t ID_PDM1_STAT  = 0x14EF111EUL;  // PDM1 -> HU (inputs, feedback)
 static const uint32_t ID_PDM2_STAT  = 0x14EF111FUL;  // PDM2 -> HU
-static const uint32_t ID_PDM1_CMD   = 0x14EF1E11UL;  // HU -> PDM1 (output levels, 45 Hz)
+static const uint32_t ID_PDM1_CMD   = 0x14EF1E11UL;  // HU -> PDM1 (output levels, ~91 Hz)
 static const uint32_t ID_PDM2_CMD   = 0x14EF1F11UL;  // HU -> PDM2
 static const uint32_t ID_PDM1_FAULT = 0x14E9111EUL;  // PDM short/overcurrent warning
 static const uint32_t ID_PDM2_FAULT = 0x14E9111FUL;
@@ -640,7 +646,8 @@ void setup() {
   Serial.println("can task: core 1 (off the WiFi core)");
 }
 
-// Shadow injection has to answer the HU inside its ~22 ms gap. Sharing the
+// CAN work must not queue behind HTTP: the HU re-asserts every ~11 ms and we
+// have to see those frames promptly to mirror state. Sharing the
 // Arduino loop with the web server made injections land late or not at all,
 // and the light averaged between our level and the HU's -> visible flicker.
 // The CAN work therefore owns core 0; the web server keeps core 1.
