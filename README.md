@@ -166,8 +166,26 @@ See the **disclaimer at the top of this file** — it is not boilerplate, and th
 ## License
 
 MIT — see [`LICENSE`](LICENSE). The license covers **this repository's own
-analysis, documentation and tooling only**. It does not and cannot grant any
-rights to the vendor firmware, which is not included here.
+analysis, documentation, tooling and firmware only**. It does not and cannot
+grant any rights to the vendor firmware, which is not included here.
+
+Third-party code included:
+
+- [`firmware/t2can/libraries/Longan_CANFD/`](firmware/t2can/libraries/Longan_CANFD/)
+  — MCP2518FD driver, © Longan Labs, MIT (its own `LICENSE` is included).
+  Vendored because two bugs in the stock example for this board break CAN
+  work; see [`docs/t2can-bench.md`](docs/t2can-bench.md).
+- `firmware/t2can/libraries/private_library/pin_config.h` — LILYGO's pin
+  definitions for this board, carried unmodified from
+  [Xinyuan-LilyGO/T-2Can](https://github.com/Xinyuan-LilyGO/T-2Can). It has no
+  license header of its own; it is 23 `#define`s of GPIO numbers — the board's
+  physical wiring — and every sketch needs it to compile.
+
+Protocol facts in [`docs/modewifi-analysis.md`](docs/modewifi-analysis.md) were
+corroborated against [ModeWifi](https://github.com/changer65535/ModeWifi)
+(GPL-3.0), an independent owner's project. **No code from it is used or
+included here** — observations about a shared vehicle bus are not copyrightable
+expression, and mixing GPL-3 code into this MIT repo is deliberately avoided.
 
 ## Status
 

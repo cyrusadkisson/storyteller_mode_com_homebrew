@@ -26,7 +26,9 @@ If instead you see `/dev/ttyACM0` and no `1d50:606f`, the adapter shipped with
 **slcan** firmware — `can_up.sh` will detect that and print the alternate
 command. Not a problem, just a different bring-up.
 
-Kernel driver `gs_usb` is already present on this laptop. Nothing else to install.
+The `gs_usb` kernel driver ships with any current Linux kernel — no module to
+install. If `lsusb` shows the adapter but no `can0` appears after bring-up,
+that driver is the thing to check.
 
 ## 1. Find the wires (van powered, screen awake)
 
@@ -67,7 +69,7 @@ CANable GND    ->  van ground (gray, pin 8) / chassis    <- do not skip this
 ## 3. Bring the interface up
 
 ```bash
-cd ~/storyteller_mode_com
+cd /path/to/this/repo
 ./tools/can_up.sh                    # can0 @ 250k, listen-only
 candump -td can0                     # frames should scroll immediately
 ```
