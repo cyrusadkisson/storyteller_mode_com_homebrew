@@ -93,7 +93,7 @@ van** — all of this must be diff-confirmed on our own captures before use.
 | Switch | Frame | Byte | Slot | Press value | His table |
 |---|---|---|---|---|---|
 | Cabin | PDM1 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 |
-| Garage (Cargo) | PDM1 F0 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI3 |
+| Cargo | PDM1 F0 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI3 |
 | Water pump | PDM2 F0 | 7 | 3 (bits 6–7) | `0x80` | ✓ DI5 |
 | Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, hold-to-run, **parked manual** |
 | Aux | PDM2 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 — exterior perimeter lighting |
@@ -115,7 +115,7 @@ sustain a *hold-to-run* switch on this van. The sink drain (PDM2 F8, byte 6,
 slot 1) physically requires the field held ~0.8 s while the PDU itself
 re-broadcasts it as released at ~25 Hz — so a parallel tap can only ever put a
 flickering `0b10` on the wire (confirmed: 50 press frames in 1 s, HU never
-commanded DO5). Toggle switches (cabin/garage/water pump) work fine off a
+commanded DO5). Toggle switches (cabin/cargo/water pump) work fine off a
 single pulse. Control of hold-to-run loads (sink drain now; awning motor
 untested, do not assume) requires the **cut-and-stand-in** architecture
 (rewrite the panel's commands in flight), which this parallel tap cannot do.
@@ -141,9 +141,29 @@ rail voltage tick, nothing else.
 | `FE` | heartbeat |
 
 The **feedback-amps** frames are the payoff: they are the `.Feedback[A]`
-signals from the dictionary *on the wire*, and they make any app **stateful**
-(0 A ⇒ the load is truly off) — exactly the piece his toggle model lacked and
-ours needs.
+signals from the dictionary *on the wire*, giving per-channel current measured
+inside the PDM (one current sense per output, so simultaneous loads read
+independently).
+
+Wire-verified on this van:
+
+- **Byte layout confirmed.** Outputs 1-6 in bytes 2-7 of `F9`/`C9`/`39`;
+  outputs 7-12 in bytes 2-7 of `0A`/`CA`/`FA`. With the water pump running,
+  `0A` byte 7 read `0x2B` = **5.375 A** on PDM1 DO12 — the correct channel.
+- **Which mux appears varies.** PDM1 was seen using `F9` and `C9`, PDM2 `39`
+  and `FA`, apparently switching with state. Decode all of them.
+- **`0 A` does NOT prove a load is off.** The scale is 0.125 A per count, so
+  anything drawing less than that reads `0x00` while lit. Observed directly:
+  with the cabin light confirmed on (head unit commanding `0x13`), DO4's own
+  byte read `0x00`, while the cargo light one channel over managed a single
+  count. Treat feedback amps as "current if present", not as an on/off oracle
+  — the head unit's commanded level is the reliable state signal.
+- **Byte 1 is not a channel.** It is present in every amp frame, does not
+  change when a channel's load changes, and differs between a PDM's two frames
+  (PDM1 `0x30` on `C9` vs `0x3F` on `0A`; PDM2 `0xF0` on both). Per-frame
+  rather than per-PDM, so not a supply measurement — the rail is in `FB`, which
+  decodes to a plausible 13.3 V. Probably a per-group enable or diagnostic
+  bitmask. **Unidentified.**
 
 ## 4. A/C writes (his)
 

@@ -254,7 +254,7 @@ Firmware vendored in `firmware/t2can/`.
 
 | Subsystem | Method |
 |---|---|
-| Cabin, garage, awning light, aux, water pump, recirc | wall-switch **input spoof** — the head unit toggles and holds it |
+| Cabin, cargo, awning light, aux, water pump, recirc | wall-switch **input spoof** — the head unit toggles and holds it |
 | Roof A/C: off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write as SA `0x03`, echoed on `0x19FFE258` |
 | Roof vent: lid, fan, airflow, speed | direct write `0x19FEA603` |
 | Inverter | single-shot latch on CAN2 |

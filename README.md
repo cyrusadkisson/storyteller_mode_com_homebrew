@@ -208,7 +208,7 @@ below. The stock system is untouched and remains the fallback.
 
 | Works | How |
 |---|---|
-| Cabin, garage, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
+| Cabin, cargo, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
 | Roof A/C — off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write, echoed back by the A/C. **Cool setpoint only** — the heat setpoint is decoded from the bus but neither shown nor settable; use the panel for it. |
 | Roof vent — lid, fan, airflow, speed | direct write, echoed by the vent |
 | Inverter | single-shot latch on CAN2 |

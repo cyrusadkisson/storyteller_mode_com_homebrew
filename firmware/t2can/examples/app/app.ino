@@ -9,7 +9,7 @@
  *   CONTROL SURFACE — wire-verified on this van unless noted:
  *     - wall-switch toggles via the input spoof (impersonate the PDM's F0/F8
  *       digital-input frames; the HU toggles and re-broadcasts, so persistence
- *       is free) — cabin, garage, aux, water pump, recirc are confirmed.
+ *       is free) — cabin, cargo, aux, water pump, recirc are confirmed.
  *       The awning light uses the same mechanism but is UNCONFIRMED: the
  *       awning is physically absent from this van, so only the HU's command
  *       byte can be watched.        — docs/modewifi-analysis.md §2
@@ -96,7 +96,7 @@ struct Sw { uint8_t pdm; uint8_t mux; uint8_t byte; uint8_t shift;
             uint16_t hold; bool holdrun; uint8_t pdmDo; const char *name; };
 static const Sw SW[] = {
   {0, 0, 6, 0, 150, false, 4,  "cabin"},        // PDM1 DO4
-  {0, 0, 6, 2, 150, false, 2,  "garage"},       // PDM1 DO2
+  {0, 0, 6, 2, 150, false, 2,  "cargo"},        // PDM1 DO2
   {1, 0, 7, 6, 150, false, 12, "pump"},         // PDM1 DO12 (switch lives on PDM2)
   {1, 0, 6, 0, 150, false, 12, "aux"},          // PDM2 DO12 (perimeter)
   {0, 0, 7, 4, 150, false, 6,  "recirc"},       // PDM1 DO6 (momentary, 10 s cycle)
@@ -181,6 +181,12 @@ static uint8_t  rixFan = 0, rixFurnace = 0, rixHotWater = 0;
 static bool     seenRix = false, seenRixCmd = false;
 static bool     seenVent = false;
 static float    invAcV = 0, invHz = 0;
+// The AC-line frame comes FROM the inverter node, so it stops arriving when
+// the inverter powers down. Without a timestamp the last reading persists and
+// the UI reports a dead inverter as running. Data older than AC_STALE_MS is
+// treated as "no reading", not as the last one.
+static uint32_t invAcAt = 0;
+#define AC_STALE_MS 3000
 static bool     seenInv = false;
 static int8_t   invCmd = -1;         // last commanded inverter state (-1 = never commanded)
 static float    ambC = 0;
@@ -260,7 +266,7 @@ void sendInv(bool on) {
 // the head unit, which our own bus-safety rules forbid. See the note in
 // docs/pdm-control.md. Levels here are STATUS ONLY, read off the HU's own
 // broadcasts.
-static const uint8_t LIGHT_DO[4] = {4, 2, 3, 5};   // cabin, garage, reading, awning
+static const uint8_t LIGHT_DO[4] = {4, 2, 3, 5};   // cabin, cargo, reading, awning
 // Wall-switch spoof index per light, -1 = no physical switch. Reading lights
 // are screen-only on this van, so with injection gone they are status-only.
 static const int8_t  LIGHT_SW[4] = {0, 1, -1, 5};
@@ -399,6 +405,7 @@ void onCanBFrame(const twai_message_t &m) {
     battAh = d[3] | (d[4] << 8);
     seenBatt = true;
   } else if (m.identifier == ID_INV_AC) {
+    invAcAt = millis();
     invAcV = (d[1] | (d[2] << 8)) * 0.05f;
     invHz = (d[5] | (d[6] << 8)) / 128.0f;
     seenInv = true;
@@ -423,14 +430,19 @@ void sendState() {
     J("\"soc\":%.1f,\"batt\":\"%s\",\"battV\":%.2f,\"battA\":%.2f,", soc, bt, battV, battA);
   } else J("\"soc\":null,\"batt\":\"no CAN2 battery frames\",");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
-  if (seenInv) J("\"invtext\":\"AC line %.0f V %.1f Hz\",", invAcV, invHz);
+  if (seenInv && (millis() - invAcAt < AC_STALE_MS))
+    J("\"invtext\":\"AC line %.0f V %.1f Hz\",", invAcV, invHz);
+  else if (seenInv) J("\"invtext\":\"no AC line data\",");
   else J("\"invtext\":\"\",");
   {
-    // AC line presence is the truth signal; our last command is only a
-    // fallback before any AC frame arrives. Charging while AC is live means
-    // the source is shore power, not the inverter.
-    bool acLive = seenInv && invAcV > 90.0f;
-    int invShown = acLive ? 1 : (invCmd >= 0 ? invCmd : -1);
+    // AC line presence is the truth signal, but only while the reading is
+    // FRESH. A stale reading means the inverter stopped reporting, which is
+    // itself evidence it is off -- never evidence that it is still on.
+    bool acFresh = seenInv && (millis() - invAcAt < AC_STALE_MS);
+    bool acLive  = acFresh && invAcV > 90.0f;
+    // With no fresh data we do not know; report -1 rather than echoing back
+    // whatever we last commanded, which is not an observation.
+    int invShown = acFresh ? (acLive ? 1 : 0) : -1;
     J("\"invon\":%d,\"aclive\":%d,\"shore\":%d,",
       invShown, acLive ? 1 : 0, (acLive && battA > 0.5f) ? 1 : 0);
   }

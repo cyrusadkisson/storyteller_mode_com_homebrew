@@ -698,7 +698,7 @@ Note the distinction, since it is easy to state wrongly:
 | Load | Why it is (or is not) controllable |
 |---|---|
 | A/C, roof vent | Separate J1939 nodes (SA `0x03`, `0x58`). They latch a command themselves — one frame, permanent. |
-| Cabin, garage, awning light, aux, pump, recirc | PDM outputs **with a physical switch**. Spoof the input, the HU toggles and holds it. |
+| Cabin, cargo, awning light, aux, pump, recirc | PDM outputs **with a physical switch**. Spoof the input, the HU toggles and holds it. |
 | Reading lights (DO3) | PDM output with **no input path at all**. Nothing to spoof; direct writes are overwritten in ~11 ms. |
 
 "No physical switch" is not by itself the reason — the A/C has no switch either

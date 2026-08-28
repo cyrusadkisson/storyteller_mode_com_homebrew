@@ -105,7 +105,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 // plain wall-switch spoofs with no dimming.
 // dimIdx maps a light row to the firmware's LIGHT_DO order; swIdx maps a
 // plain row to the SW[] spoof table.
-const LIGHTS=["cabin","garage","reading","awning"];
+const LIGHTS=["cabin","cargo","reading","awning"];
 const LIGHT_CTL=[1,1,0,1];   // reading has no wall switch -> status only
 const LIGHT_SW=[0,1,-1,5];   // index into the firmware's SW[] spoof table
 const PLAIN=[{n:"aux",sw:3},{n:"pump",sw:2},{n:"recirc",sw:4}];
@@ -113,6 +113,9 @@ const lHold=[0,0,0,0], lOn=[0,0,0,0], lPct=[0,0,0,0];
 
 const holdUntil=[0,0,0], curP=[0,0,0];
 
+// PDM feedback current comes in 0.125 A counts; two decimals below 1 A so a
+// single count is distinguishable from zero.
+function fmtA(a){return (a<1 ? a.toFixed(2) : a.toFixed(1))+" A";}
 const tb=document.getElementById("switches");
 LIGHTS.forEach((n,i)=>{
   const r=document.createElement("tr");
@@ -330,16 +333,24 @@ vr.oninput=()=>{
   }));
 
 // --- inverter ------------------------------------------------------------------------
-// Single-shot latch, no status echo: button = last commanded state, the AC
-// line sub-text next to it is the ground truth.
-let curInv=-1;
+// The inverter is a single-shot latch with no status echo, so its state comes
+// from the AC line: live mains means it is running. That reading is only
+// meaningful while FRESH -- the frame comes from the inverter itself and stops
+// when it powers down, so a held-over reading would report a dead inverter as
+// running. The firmware sends -1 when it has no current reading, and that is
+// shown as "?" rather than guessed at.
+let curInv=-1;          // 1 = on, 0 = off, -1 = unknown
+let invHold=0;
 function paintInv(){
   const b=document.getElementById("invtog");
-  b.textContent=curInv===1?"ON":"off";
+  b.textContent=curInv===1?"ON":(curInv===0?"off":"?");
   b.className=curInv===1?"on":"";
 }
 document.getElementById("invtog").onclick=()=>{
-  curInv=curInv===1?0:1; paintInv(); cmd("inv&on="+(curInv===1?1:0));
+  // Optimistic, but briefly: the AC line is authoritative and will confirm or
+  // contradict this within a couple of seconds.
+  curInv=curInv===1?0:1; paintInv(); invHold=Date.now()+4000;
+  cmd("inv&on="+(curInv===1?1:0));
 };
 
 // --- command + poll plumbing ----------------------------------------------------------
@@ -363,13 +374,16 @@ async function poll(){
         const t=document.getElementById("L"+i);
         t.textContent=L.on?"on (panel)":"panel";
       }
+      // Feedback current is quantised to 0.125 A per count, so a single count
+      // (0.125 A) renders as "0.1" at one decimal. Show two decimals below 1 A
+      // to keep the smallest readable step visible.
       const am=document.getElementById("la"+i);
-      if(am) am.textContent=L.amps>0.02?L.amps.toFixed(1)+" A":"";
+      if(am) am.textContent=L.amps>0.02?fmtA(L.amps):"";
     });
     PLAIN.forEach((p,i)=>{
       const st=j.sw[p.sw]?1:0;
       if(Date.now()>=holdUntil[i]&&st!==curP[i]){curP[i]=st;paint(i);}
-      document.getElementById("a"+i).textContent=j.amps[p.sw]>0.02?j.amps[p.sw].toFixed(1)+" A":"";
+      document.getElementById("a"+i).textContent=j.amps[p.sw]>0.02?fmtA(j.amps[p.sw]):"";
     });
     if(Date.now()>=acHold){
       const m=j.acmode||"off";
@@ -412,7 +426,9 @@ async function poll(){
         document.getElementById("sppct").textContent="--";
       }
     }
-    if(j.invon!=null&&j.invon>=0&&curInv!==j.invon){curInv=j.invon;paintInv();}
+    // -1 means the box has no fresh AC reading: show "?" rather than keeping a
+    // stale value on screen.
+    if(j.invon!=null&&Date.now()>=invHold&&curInv!==j.invon){curInv=j.invon;paintInv();}
     acPower=!!j.aclive; paintAcGate();
     document.getElementById("invline").textContent=
       j.shore?"· shore power · "+(j.invtext||"") : (j.invtext?"· "+j.invtext:"");
