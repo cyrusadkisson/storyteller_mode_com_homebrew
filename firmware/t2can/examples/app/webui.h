@@ -477,9 +477,11 @@ async function poll(){
     document.getElementById("graybar").style.width=(j.gray||0)+"%";
     // Frame counters and raw channel levels were debugging aids; the pack
     // summary and any PDM fault are what is still worth surfacing.
-    const fault=(j.foot||"").match(/PDM\d FAULT/g);
+    // Pack summary, then the bus counters. CAN2's age is the one that matters:
+    // the battery readings above are suppressed when it goes stale, and this
+    // says how long it has been quiet.
     document.getElementById("foot").textContent=
-      (j.packline||"")+(fault?"  "+fault.join("  "):"");
+      (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
 }
 

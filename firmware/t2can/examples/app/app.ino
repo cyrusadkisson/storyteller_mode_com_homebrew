@@ -137,6 +137,12 @@ static uint16_t battSoC2 = 0;      // SoC ×2
 static uint16_t battMin = 0xFFFF, battAh = 0;
 static uint8_t  battSoH = 0;
 static bool     seenBatt = false, seenTank = false;
+// Battery data must never be rendered from a frozen reading. The BMS can
+// sleep, the CAN2 tap can fail, and the TWAI controller can go bus-off --
+// in all three the last values would otherwise sit on screen looking live.
+// Correctness cannot depend on someone noticing a frame counter.
+static uint32_t battAt = 0;
+#define BATT_STALE_MS 5000
 static uint8_t  acB1 = 0, acFan = 0;
 // Fan (wire-verified 2026-08-25): byte1 high nibble 0=auto, 1=manual;
 // byte2 = speed, 0x64 low / 0xC8 high. byte1 0x10 = fan-only (compressor off).
@@ -415,16 +421,16 @@ void onCanBFrame(const twai_message_t &m) {
     battV = (d[2] | (d[3] << 8)) * 0.05f;
     int32_t raw = d[4] | (d[5] << 8) | (d[6] << 16) | ((uint32_t)d[7] << 24);
     battA = -(raw - 2000000000LL) / 1000.0f;   // wire + = discharge; we show panel sign (+ = charging)
-    seenBatt = true;
+    seenBatt = true; battAt = millis();
   } else if (m.identifier == ID_DC2) {
     battT = raw2cF(d[2] | (d[3] << 8));
     battSoC2 = d[4];
     battMin = d[5] | (d[6] << 8);
-    seenBatt = true;
+    seenBatt = true; battAt = millis();
   } else if (m.identifier == ID_DC3) {
     battSoH = d[2];
     battAh = d[3] | (d[4] << 8);
-    seenBatt = true;
+    seenBatt = true; battAt = millis();
   } else if (m.identifier == ID_INV_AC) {
     invAcAt = millis();
     invAcV = (d[1] | (d[2] << 8)) * 0.05f;
@@ -444,7 +450,7 @@ void sendState() {
   // helper macro: append formatted
   #define J(...) do { w += n; left -= n; if (left <= 0) goto out; n = snprintf(w, left, __VA_ARGS__); } while (0)
 
-  if (seenBatt) {
+  if (seenBatt && (millis() - battAt < BATT_STALE_MS)) {
     float soc = battSoC2 * 0.5f;
     // Pack watts is a real calculation: both terms are measured on CAN2 and
     // this IS the pack rail (unlike the DC loads -- see LOAD_BUS_V).
@@ -462,8 +468,9 @@ void sendState() {
     else
       J("\"lifeline\":\"\",");
     J("\"batt\":\"\",");
-  } else J("\"soc\":null,\"batt\":\"no CAN2 battery frames\","
-           "\"packline\":\"\",\"drawline\":\"\",\"lifeline\":\"\",");
+  } else J("\"soc\":null,\"batt\":\"%s\","
+           "\"packline\":\"\",\"drawline\":\"--\",\"lifeline\":\"\",",
+           seenBatt ? "CAN2 battery data stale" : "no CAN2 battery frames");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
   J("\"gfan\":%d,", doLevel[GALLEY_FAN_PDM][GALLEY_FAN_DO]);
   if (seenInv && (millis() - invAcAt < AC_STALE_MS))
@@ -547,8 +554,9 @@ void sendState() {
 
   {
     char ft[200];
-    snprintf(ft, sizeof ft, "frames A %lu / B %lu  |  last: %s%s%s",
-             (unsigned long)cntA, (unsigned long)cntB, lastCmd,
+    snprintf(ft, sizeof ft, "CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
+             (unsigned long)cntA, (unsigned long)cntB,
+             (unsigned long)(battAt ? (millis() - battAt) / 1000 : 0), lastCmd,
              (faultB[0][0] | faultB[0][1]) ? "  PDM1 FAULT" : "",
              (faultB[1][0] | faultB[1][1]) ? "  PDM2 FAULT" : "");
     J("\"foot\":\"%s\"", ft);
