@@ -28,10 +28,13 @@ button.on{background:var(--on)}
 button.sel{background:#46535f}
 button:active{opacity:.8}button:disabled{opacity:.45}
 .big{font-size:26px;font-weight:600}
+.bl{padding:2px 2px;color:var(--mut)}
+#drawline,#lifeline,#invline{white-space:pre}
 .mut{color:var(--mut)}input[type=range]{width:100%}
 .bar{display:inline-block;width:84px;height:12px;background:#0d1117;border-radius:6px;overflow:hidden;vertical-align:middle;margin-left:8px}
 .bar>div{height:100%;background:var(--ac)}
 .bar>div.g{background:#a07840}
+.bar>div.gr{background:var(--on)}
 .sw2{position:relative;display:inline-flex;width:132px;height:40px;background:#2a3440;border-radius:10px;cursor:pointer;user-select:none}
 .sw2 .lbl{flex:1;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--mut);z-index:1}
 .sw2 .knob{position:absolute;top:3px;left:3px;width:63px;height:34px;border-radius:8px;background:#5a6773;
@@ -42,6 +45,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .dimtbl td.nm{white-space:nowrap}
 .dimtbl td.bt{width:74px}
 .dimtbl button{width:100%;min-width:0;padding:9px 6px;font-size:14px}
+.ro{font-size:15px;color:var(--mut);display:inline-block;line-height:1.2}
 .dimtbl input[type=range]{width:100%;margin:0;vertical-align:middle}
 .dimtbl tr.mst td{border-top:1px solid #2a3440;padding-top:9px}
 .row.sub2{padding-left:16px;font-size:14px}
@@ -50,13 +54,19 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </style></head><body>
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
-<div class="card"><div class="row"><div><div class="big" id="soc">--%</div><div class="sub" id="batt"></div></div>
-<div style="text-align:right"><div class="big" id="tempin">--</div><div class="sub">inside</div></div></div></div>
+<h2>Battery</h2><div class="card">
+<div class="row"><span class="name">Life:</span>
+<span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
+<div class="row"><span>Power flow:</span>
+<span><span id="drawline">--</span><span id="lifeline"></span></span></div>
+<div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches</h2><div class="card">
 <table class="dimtbl"><tbody id="switches"></tbody></table></div>
 
-<h2>Climate</h2><div class="card" id="climcard">
+<h2 style="display:flex;justify-content:space-between;align-items:baseline">Climate
+<span id="tempin" style="text-transform:none;letter-spacing:0;color:var(--tx)">--</span></h2>
+<div class="card" id="climcard">
 <div class="row" id="acgate" style="display:none"><span class="sub">needs the inverter or shore power &mdash; the overhead unit runs on AC</span></div>
 <div class="row"><span class="name">Roof A/C</span>
 <span><button id="m0">Off</button> <button id="m1">Cool</button> <button id="m2">Heat</button></span></div>
@@ -105,26 +115,32 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 // plain wall-switch spoofs with no dimming.
 // dimIdx maps a light row to the firmware's LIGHT_DO order; swIdx maps a
 // plain row to the SW[] spoof table.
-const LIGHTS=["cabin","cargo","reading","awning"];
+const LIGHTS=["cabin lights","cargo lights","reading lights","awning lights"];
 const LIGHT_CTL=[1,1,0,1];   // reading has no wall switch -> status only
 const LIGHT_SW=[0,1,-1,5];   // index into the firmware's SW[] spoof table
-const PLAIN=[{n:"aux",sw:3},{n:"pump",sw:2},{n:"recirc",sw:4}];
+const PLAIN=[{n:"aux",sw:3},{n:"water pump",sw:2},{n:"hot water circ.",sw:4}];
 const lHold=[0,0,0,0], lOn=[0,0,0,0], lPct=[0,0,0,0];
 
 const holdUntil=[0,0,0], curP=[0,0,0];
 
-// PDM feedback current comes in 0.125 A counts; two decimals below 1 A so a
-// single count is distinguishable from zero.
-function fmtA(a){return (a<1 ? a.toFixed(2) : a.toFixed(1))+" A";}
+// Per-fixture draw, shown as "-0.25A (-13W)". Units are compressed against
+// the numbers, draws are negative, and a surplus would carry no + sign.
+// The underlying current is quantised to 0.125 A counts, so the watts figure
+// steps in ~1.5 W increments.
+function fmtDraw(a,w){
+  const as=(Math.abs(a)<1 ? a.toFixed(2) : a.toFixed(1))+"A";
+  const ws=(Math.abs(w)<10 ? w.toFixed(1) : w.toFixed(0))+"W";
+  return as+" ("+ws+")";
+}
 const tb=document.getElementById("switches");
 LIGHTS.forEach((n,i)=>{
   const r=document.createElement("tr");
   // "reading" has no wall switch on this van and dimming is gone, so that
   // row is a status readout only — the panel is the way to control it.
   const btn=LIGHT_CTL[i]?`<button id="L${i}">off</button>`
-                        :`<span class="sub" id="L${i}">panel</span>`;
+                        :`<span id="L${i}" class="ro">use panel</span>`;
   r.innerHTML=`<td class="nm">${n} <span class="sub" id="la${i}"></span></td>`+
-              `<td class="bt">${btn}</td>`;
+              `<td class="bt"${LIGHT_CTL[i]?"":' style="text-align:center"'}>${btn}</td>`;
   tb.appendChild(r);
 });
 PLAIN.forEach((p,i)=>{
@@ -133,6 +149,14 @@ PLAIN.forEach((p,i)=>{
               `<td class="bt"><button id="s${i}">off</button></td>`;
   tb.appendChild(r);
 });
+// Read-only: the battery-compartment fans are a standing-feed channel we never
+// write to. Reported, never controlled.
+{
+  const r=document.createElement("tr");
+  r.innerHTML=`<td class="nm">battery&rarr;galley fans</td>`+
+              `<td class="bt" style="text-align:center"><span id="gfan" class="ro">--</span></td>`;
+  tb.appendChild(r);
+}
 
 function paintLight(i){
   if(!LIGHT_CTL[i])return;
@@ -364,26 +388,34 @@ async function poll(){
   try{
     const j=await (await fetch("/api/state")).json();
     document.getElementById("build").textContent=j.build||"";
-    document.getElementById("soc").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
     document.getElementById("batt").textContent=j.batt||"";
-    document.getElementById("tempin").textContent=j.tempin!=null?j.tempin.toFixed(0)+"°F":"";
+    document.getElementById("drawline").textContent=j.drawline||"--";
+    document.getElementById("socpct").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
+    document.getElementById("lifeline").textContent=j.lifeline||"";
+    document.getElementById("socbar").style.width=(j.soc!=null?j.soc:0)+"%";
+    // Battery-compartment fans: report the commanded level, not current.
+    const gf=document.getElementById("gfan");
+    if(gf) gf.textContent=j.gfan==null?"--":(j.gfan>0?"on, auto":"off, auto");
+    document.getElementById("tempin").textContent=
+      j.tempin!=null?(j.tempin.toFixed(0)+"°F inside"):"";
     if(j.lights) LIGHTS.forEach((n,i)=>{
       const L=j.lights[i];
       if(Date.now()>=lHold[i]&&L.on!==lOn[i]){lOn[i]=L.on;paintLight(i);}
       if(!LIGHT_CTL[i]){                     // status-only row
         const t=document.getElementById("L"+i);
-        t.textContent=L.on?"on (panel)":"panel";
+        t.textContent="use panel";
       }
       // Feedback current is quantised to 0.125 A per count, so a single count
       // (0.125 A) renders as "0.1" at one decimal. Show two decimals below 1 A
       // to keep the smallest readable step visible.
       const am=document.getElementById("la"+i);
-      if(am) am.textContent=L.amps>0.02?fmtA(L.amps):"";
+      if(am) am.textContent=Math.abs(L.watts)>0.5?fmtDraw(L.amps,L.watts):"";
     });
     PLAIN.forEach((p,i)=>{
       const st=j.sw[p.sw]?1:0;
       if(Date.now()>=holdUntil[i]&&st!==curP[i]){curP[i]=st;paint(i);}
-      document.getElementById("a"+i).textContent=j.amps[p.sw]>0.02?fmtA(j.amps[p.sw]):"";
+      document.getElementById("a"+i).textContent=
+        Math.abs(j.watts[p.sw])>0.5?fmtDraw(j.amps[p.sw],j.watts[p.sw]):"";
     });
     if(Date.now()>=acHold){
       const m=j.acmode||"off";
@@ -431,7 +463,7 @@ async function poll(){
     if(j.invon!=null&&Date.now()>=invHold&&curInv!==j.invon){curInv=j.invon;paintInv();}
     acPower=!!j.aclive; paintAcGate();
     document.getElementById("invline").textContent=
-      j.shore?"· shore power · "+(j.invtext||"") : (j.invtext?"· "+j.invtext:"");
+      j.shore?"•  shore power  •  "+(j.invtext||"") : (j.invtext?"•  "+j.invtext:"");
     // Rixen: read-only mirror of the heater's own state
     document.getElementById("rixcur").textContent=j.rixcur!=null?j.rixcur.toFixed(1)+"°F":"--";
     document.getElementById("rixtgt").textContent=j.rixtgt!=null?j.rixtgt.toFixed(1)+"°F":"--";
@@ -443,7 +475,11 @@ async function poll(){
     document.getElementById("freshbar").style.width=(j.fresh||0)+"%";
     document.getElementById("gray").textContent=j.gray!=null?j.gray+"%":"--";
     document.getElementById("graybar").style.width=(j.gray||0)+"%";
-    document.getElementById("foot").textContent=(j.foot||"")+(j.dbg?"\n"+j.dbg:"");
+    // Frame counters and raw channel levels were debugging aids; the pack
+    // summary and any PDM fault are what is still worth surfacing.
+    const fault=(j.foot||"").match(/PDM\d FAULT/g);
+    document.getElementById("foot").textContent=
+      (j.packline||"")+(fault?"  "+fault.join("  "):"");
   }catch(e){}
 }
 

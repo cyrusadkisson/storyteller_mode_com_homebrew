@@ -21,7 +21,8 @@
  *       oscillates to 0 while the fan runs.
  *     - inverter on/off on CAN2 (0x19FFD3F2, single-shot latch). No status
  *       echo exists, so the AC line voltage is the truth check.
- *   READ-ONLY: per-channel feedback amps, tanks, battery DC status, inverter
+ *   READ-ONLY: per-channel power (feedback amps x the 12 V load bus),
+ *   tanks, battery DC status, inverter
  *   AC stats, interior temperature, PDM fault frames, Rixen heater state.
  *
  *   NOT included, each for a measured reason (see the docs): dimming and
@@ -116,6 +117,19 @@ static bool    liveSeen[2][2];
 // ----- mirrored state --------------------------------------------------------
 static uint8_t  doLevel[2][13];    // HU-commanded level per channel (index 1..12)
 static float    doAmps[2][13];     // feedback current per channel, ×0.125 A
+// The switched DC loads run on a nominal 12 V bus, downstream of the van's
+// 48->12 V converter. NOTE the PDM's own FB frame reports ~52.7 V -- that is
+// the 48 V PACK, not this rail, and using it would overstate every load by 4x.
+// Verified against the panel: the water pump reads 5.375 A here and the panel
+// shows ~60 W, i.e. ~11-12 V.
+#define LOAD_BUS_V 12.0f
+// Battery-compartment fans: PDM2 DO2, named GalleyFanSpeed in the firmware
+// dictionary. A standing-feed channel we never write to -- the head unit runs
+// it autonomously. The COMMANDED level is the usable signal; its feedback
+// current sits on the 0.125 A quantisation boundary and dithers, so it cannot
+// tell running from stopped.
+#define GALLEY_FAN_PDM 1
+#define GALLEY_FAN_DO  2
 static uint8_t  faultB[2][2];      // PDM fault frame bytes 2-3
 static uint8_t  fwL = 0, fwR = 1, grL = 0, grR = 1;
 static float    battV = 0, battA = 0, battT = 0;      // CAN2
@@ -165,7 +179,12 @@ static uint8_t  ventSetSpeed = 0;
 // Until WE command the vent, the panel owns it and we must adopt what the bus
 // shows -- otherwise a fresh boot reports our defaults (off / out / 50%) as if
 // they were fact, while the fan is actually running.
-static bool     ventOwned = false;               // true once we have commanded
+// Ownership is a short WINDOW after our own command, not a permanent mode.
+// It exists so a status byte that momentarily reads 0 cannot clobber a
+// setpoint we just sent; making it permanent made the panel invisible to the
+// app forever after its first command.
+static uint32_t ventCmdAt = 0;
+#define VENT_OWN_MS 5000               // true once we have commanded
 // Byte 2 oscillates to 0 on a ~5-10 s cycle while the fan runs, so a zero
 // proves nothing -- but a NONZERO reading proves the fan IS running. Latch
 // that, and only believe "stopped" after sustained zeros past that period.
@@ -350,18 +369,20 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
       lidOpen = repOpen;
       airIn = (ventRepMode & 0x01);
     }
+    bool owned = ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS);
     if (ventRepSpeed > 0) {
       ventLastNonZero = millis();
       ventObsSpeed = ventRepSpeed;
       // A running fan is the ONE time the real speed is on the bus: the
-      // command frame is fire-once and never re-broadcast, and the status
-      // byte reads 0 whenever the fan is off. Learn it whenever we have no
-      // setpoint, and always while the panel still owns the vent.
-      if (ventSetSpeed == 0 || !ventOwned) ventSetSpeed = ventRepSpeed;
-      if (!ventOwned) ventFanOn = true;
-    } else if (!ventOwned && ventLastNonZero &&
+      // command frame is fire-once and never re-broadcast, and the status byte
+      // reads 0 whenever the fan is off. Outside our own command window the
+      // panel is authoritative, so track whatever it sets.
+      if (!owned) { ventSetSpeed = ventRepSpeed; ventFanOn = true; }
+      else if (ventSetSpeed == 0) ventSetSpeed = ventRepSpeed;
+    } else if (!owned && ventLastNonZero &&
                millis() - ventLastNonZero > 15000) {
-      ventFanOn = false;                // sustained zeros, past the oscillation
+      // Sustained zeros, past the documented 5-10 s oscillation: really off.
+      ventFanOn = false;
     }
     ventT = raw2cF(b[4] | (b[5] << 8));
     return;
@@ -424,14 +445,29 @@ void sendState() {
   #define J(...) do { w += n; left -= n; if (left <= 0) goto out; n = snprintf(w, left, __VA_ARGS__); } while (0)
 
   if (seenBatt) {
-    char bt[64];
     float soc = battSoC2 * 0.5f;
-    snprintf(bt, sizeof bt, "%.1f V  %+.1f A  %.0f°F  %u Ah", battV, battA, battT * 9 / 5 + 32, battAh);
-    J("\"soc\":%.1f,\"batt\":\"%s\",\"battV\":%.2f,\"battA\":%.2f,", soc, bt, battV, battA);
-  } else J("\"soc\":null,\"batt\":\"no CAN2 battery frames\",");
+    // Pack watts is a real calculation: both terms are measured on CAN2 and
+    // this IS the pack rail (unlike the DC loads -- see LOAD_BUS_V).
+    float battW = battV * battA;
+    // Three separate lines so the UI can lay them out; sign convention is a
+    // DRAW negative, a surplus (shore, solar, alternator) positive with no
+    // + sign. battA already follows this -- the wire value is negated at decode.
+    J("\"soc\":%.1f,\"battV\":%.2f,\"battA\":%.2f,\"battW\":%.0f,", soc, battV, battA, battW);
+    J("\"packline\":\"Pack: %.1fV  %.0f°F  %uAh\",", battV, battT * 9 / 5 + 32, battAh);
+
+    J("\"drawline\":\"%.1fA (%.0fW)\",", battA, battW);
+    if (battMin != 0xFFFF && battMin > 0)
+      J("\"lifeline\":\"   \u2022   %02ud %02uh\",",
+        (unsigned)(battMin / 1440), (unsigned)((battMin % 1440) / 60));
+    else
+      J("\"lifeline\":\"\",");
+    J("\"batt\":\"\",");
+  } else J("\"soc\":null,\"batt\":\"no CAN2 battery frames\","
+           "\"packline\":\"\",\"drawline\":\"\",\"lifeline\":\"\",");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
+  J("\"gfan\":%d,", doLevel[GALLEY_FAN_PDM][GALLEY_FAN_DO]);
   if (seenInv && (millis() - invAcAt < AC_STALE_MS))
-    J("\"invtext\":\"AC line %.0f V %.1f Hz\",", invAcV, invHz);
+    J("\"invtext\":\"AC line %.0fV %.1fHz\",", invAcV, invHz);
   else if (seenInv) J("\"invtext\":\"no AC line data\",");
   else J("\"invtext\":\"\",");
   {
@@ -450,15 +486,19 @@ void sendState() {
   J("\"lights\":[");
   for (int k = 0; k < 4; k++) {
     uint8_t ch = LIGHT_DO[k];
-    J("%s{\"on\":%d,\"pct\":%d,\"amps\":%.2f,\"ctl\":%d}", k ? "," : "",
-      doLevel[0][ch] > 0 ? 1 : 0, lvl2pct(doLevel[0][ch]), doAmps[0][ch],
+    // Loads only ever consume, so both figures are reported negative.
+    J("%s{\"on\":%d,\"pct\":%d,\"amps\":%.3f,\"watts\":%.1f,\"ctl\":%d}", k ? "," : "",
+      doLevel[0][ch] > 0 ? 1 : 0, lvl2pct(doLevel[0][ch]),
+      -doAmps[0][ch], -doAmps[0][ch] * LOAD_BUS_V,
       LIGHT_SW[k] >= 0 ? 1 : 0);
   }
   J("],");
   J("\"sw\":[");
   for (int i = 0; i < 6; i++) J("%s%d", i ? "," : "", doLevel[SW_OUT_PDM[i]][SDO(i)] > 0 ? 1 : 0);
   J("],\"amps\":[");
-  for (int i = 0; i < 6; i++) J("%s%.2f", i ? "," : "", doAmps[SW_OUT_PDM[i]][SDO(i)]);
+  for (int i = 0; i < 6; i++) J("%s%.3f", i ? "," : "", -doAmps[SW_OUT_PDM[i]][SDO(i)]);
+  J("],\"watts\":[");
+  for (int i = 0; i < 6; i++) J("%s%.1f", i ? "," : "", -doAmps[SW_OUT_PDM[i]][SDO(i)] * LOAD_BUS_V);
   J("],");
 
   if (seenAC) {
@@ -485,7 +525,8 @@ void sendState() {
       "\"vown\":%d,\"vobs\":%d,\"fansp\":\"%s\",",
       vs, ventSpeed, ventRepSpeed, airIn ? 1 : 0,
       (lidState == LID_OPEN) ? 1 : 0, (lidState == LID_MOVING) ? 1 : 0,
-      ventSetSpeed, ventFanOn ? 1 : 0, ventOwned ? 1 : 0, ventObsSpeed,
+      ventSetSpeed, ventFanOn ? 1 : 0,
+      (ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS)) ? 1 : 0, ventObsSpeed,
       ventFanOn ? (airIn ? "air in" : "air out") : "off");
   } else J("\"ventst\":\"?\",\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
            "\"vopen\":0,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
@@ -592,7 +633,7 @@ void onCmd() {
       used = true;
     }
     if (used) {
-      ventOwned = true;
+      ventCmdAt = millis();
       ventSpeed = ventFanOn ? ventSetSpeed : 0;
       sendVent(ventSpeed, ventModeByte());
       char m[80];
