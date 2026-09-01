@@ -462,9 +462,18 @@ void sendState() {
     J("\"packline\":\"Pack: %.1fV  %.0f°F  %uAh\",", battV, battT * 9 / 5 + 32, battAh);
 
     J("\"drawline\":\"%.1fA (%.0fW)\",", battA, battW);
-    if (battMin != 0xFFFF && battMin > 0)
+    // The BMS sends 0xFFFF whenever it declines to estimate -- which it does
+    // at low draw, exactly when the answer is most reassuring. We have amp
+    // hours and amps, so compute it rather than showing nothing. Charging has
+    // no "time left" to report.
+    uint32_t mins = 0;
+    if (battMin != 0xFFFF && battMin > 0) mins = battMin;
+    else if (battA < -0.05f && battAh > 0) mins = (uint32_t)(battAh / -battA * 60.0f);
+    if (mins > 0)
       J("\"lifeline\":\"   \u2022   %02ud %02uh\",",
-        (unsigned)(battMin / 1440), (unsigned)((battMin % 1440) / 60));
+        (unsigned)(mins / 1440), (unsigned)((mins % 1440) / 60));
+    else if (battA > 0.05f)
+      J("\"lifeline\":\"   \u2022   charging\",");
     else
       J("\"lifeline\":\"\",");
     J("\"batt\":\"\",");

@@ -80,6 +80,17 @@ remaining confirmed by arithmetic — at 19.5 A it read `0x020A` = **522 min**,
 and 173 Ah ÷ 19.5 A = **8.9 h = 533 min**. Two independently decoded frames
 agreeing.
 
+> **The factory panel misrenders the unknown sentinel.** The BMS sends
+> `FF FF` whenever it declines to estimate, which it does at low draw. The
+> stock screen prints that literally as **45d 12h** — because `0xFFFF` minutes
+> is 45.51 days. Observed directly: with the pack at ~70 % and a 31 W draw,
+> the panel showed 45d 12h while a correct calculation gives 8d 16h. If you
+> see 45 days on the panel, the BMS is saying "unknown", not "six weeks".
+
+**`Ah` in `DC_SOURCE_STATUS_3` is capacity REMAINING, not pack size.** At
+~70 % SoC on this 173 Ah pack it reads ~121 Ah, and dividing it by the present
+current gives a time that matches. Do not treat it as the nameplate figure.
+
 ### `0x19FFFB46` — DC_SOURCE_STATUS_3
 
 | bytes | field | encoding |

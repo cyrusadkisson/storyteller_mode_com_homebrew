@@ -212,7 +212,12 @@ below. The stock system is untouched and remains the fallback.
 | Roof A/C — off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write, echoed back by the A/C. **Cool setpoint only** — the heat setpoint is decoded from the bus but neither shown nor settable; use the panel for it. |
 | Roof vent — lid, fan, airflow, speed | direct write, echoed by the vent |
 | Inverter | single-shot latch on CAN2 |
-| Read-only display | per-channel current draw, tank levels, battery voltage/current/SoC/temperature, AC line voltage and frequency, cabin temperature, PDM fault flags, Rixen heater state |
+| Read-only display | per-channel power draw, tank levels, battery voltage/current/SoC/temperature and time remaining, AC line voltage and frequency, cabin temperature, PDM fault flags, Rixen heater state |
+
+The time-remaining figure is one place this app is simply more correct than
+the panel: the BMS reports `0xFFFF` when it declines to estimate, and the
+stock screen renders that sentinel literally as **45d 12h**. See
+[`energy-can2.md`](docs/energy-can2.md).
 
 **Deliberately not included**, each for a measured reason:
 
