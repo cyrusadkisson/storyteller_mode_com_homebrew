@@ -72,7 +72,7 @@ static const char *MDNS_NAME = "van";         // http://van.local
 
 // ----- board temperature history --------------------------------------------
 // The ESP32-S3 has no RTC and millis() resets on every boot, so history is
-// RELATIVE: 120 completed hourly buckets plus the hour in progress = 121 bars.
+// RELATIVE: TEMP_DAYS*24 completed hourly buckets plus the hour in progress.
 // Kept in RAM (~500 bytes) rather than flash -- the board is on permanent DC
 // and only loses power on a full system shutdown, where losing history is
 // acceptable and the alternative is thousands of flash write cycles.
@@ -80,13 +80,20 @@ static const char *MDNS_NAME = "van";         // http://van.local
 // This reads the DIE, not the cavity: it runs above ambient by the chip's own
 // dissipation plus the WiFi radio. Absolute accuracy is a few degrees; the
 // useful signal is the shape over a day.
-#define TEMP_BUCKETS   121          // 120 whole hours + the current one
+#define TEMP_DAYS      7            // history span; UI derives its axis from this
+#define TEMP_BUCKETS   (TEMP_DAYS * 24 + 1)   // whole hours + the current one
 #define TEMP_SAMPLE_MS 30000        // one reading per 30 s
 #define TEMP_MIN_VALID 30           // >=15 min of samples or the hour is void
 static bool     tempOK = true;   // Arduino's temperatureRead() needs no setup
 static int16_t  tempHist[TEMP_BUCKETS];   // tenths of °C; INT16_MIN = no data
 static float    tempAcc = 0;              // current hour accumulator
 static uint16_t tempCnt = 0;
+// Cabin ambient gets the same treatment: same buckets, same validity rule.
+// It comes from the A/C node on CAN1, so it also stops when that bus does --
+// hence its own sample counter rather than reusing the die sensor's.
+static int16_t  ambHist[TEMP_BUCKETS];
+static float    ambAcc = 0;
+static uint16_t ambCnt = 0;
 static uint32_t tempLastSample = 0;
 static uint32_t tempHourStart = 0;
 static uint16_t tempFilled = 0;           // buckets rotated so far
@@ -250,6 +257,7 @@ static bool     seenInv = false;
 static int8_t   invCmd = -1;         // last commanded inverter state (-1 = never commanded)
 static float    ambC = 0;
 static bool     seenAmb = false;
+static uint32_t ambAt = 0;
 static uint32_t cntA = 0, cntB = 0;
 static char     lastCmd[56] = "none";   // last /api/cmd that ran, for the footer
 
@@ -427,7 +435,7 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     ventT = raw2cF(b[4] | (b[5] << 8));
     return;
   }
-  if (id == ID_AMBIENT) { seenAmb = true; ambC = raw2cF(b[1] | (b[2] << 8)); return; }
+  if (id == ID_AMBIENT) { seenAmb = true; ambAt = millis(); ambC = raw2cF(b[1] | (b[2] << 8)); return; }
   if (id == ID_RIX_STATUS) {                    // 0x724, LE 16-bit fields
     seenRix = true;
     rixCurRaw = b[0] | (b[1] << 8);             // x0.01 C
@@ -474,9 +482,10 @@ void onCanBFrame(const twai_message_t &m) {
 }
 
 // ----- JSON state ----------------------------------------------------------------
-// 121 temperature buckets add ~600 bytes on top of the rest of the state, and
-// the J() macro truncates silently once the buffer fills.
-static char jbuf[3584];
+// Two 169-bucket histories add ~2 KB on top of the rest of the state, and the
+// J() macro truncates silently once the buffer fills -- which would break the
+// whole response, not just the charts. Sized with headroom.
+static char jbuf[5120];
 
 void sendState() {
   char *w = jbuf;
@@ -598,7 +607,7 @@ void sendState() {
   else J("\"fresh\":null,\"gray\":null,");
 
   {
-    // Temperature history: 121 buckets, oldest first, tenths of °F.
+    // Temperature history: TEMP_BUCKETS entries, oldest first, in °F.
     // null marks an hour with too few samples or no data at all.
     J("\"temphist\":[");
     for (int i = 0; i < TEMP_BUCKETS; i++) {
@@ -608,8 +617,16 @@ void sendState() {
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
     }
-    J("],\"tempnow\":%.1f,\"tempfill\":%u,",
-      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled);
+    J("],\"ambhist\":[");
+    for (int i = 0; i < TEMP_BUCKETS; i++) {
+      int16_t v = ambHist[i];
+      if (i == TEMP_BUCKETS - 1 && ambCnt >= TEMP_MIN_VALID)
+        v = (int16_t)(ambAcc / ambCnt * 10.0f);
+      if (v == INT16_MIN) J("%snull", i ? "," : "");
+      else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
+    }
+    J("],\"tempnow\":%.1f,\"tempfill\":%u,\"tempdays\":%d,",
+      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_DAYS);
   }
   {
     char ft[200];
@@ -725,7 +742,7 @@ void setup() {
   delay(300);
   Serial.println("companion app: boot");
 
-  for (int i = 0; i < TEMP_BUCKETS; i++) tempHist[i] = INT16_MIN;
+  for (int i = 0; i < TEMP_BUCKETS; i++) { tempHist[i] = INT16_MIN; ambHist[i] = INT16_MIN; }
   Serial.printf("temp sensor: %.1f C\n", temperatureRead());
   tempHourStart = millis();
   tempLastSample = millis();
@@ -810,6 +827,12 @@ void tempTick() {
       tempAcc += c;
       tempCnt++;
     }
+    // Only sample ambient while the reading is fresh; a stale value would
+    // otherwise be averaged in as though the cabin were still being measured.
+    if (seenAmb && (uint32_t)(now - ambAt) < 30000UL) {
+      ambAcc += ambC;
+      ambCnt++;
+    }
   }
   if ((uint32_t)(now - tempHourStart) >= 3600000UL) {
     tempHourStart += 3600000UL;
@@ -819,6 +842,11 @@ void tempTick() {
         (tempCnt >= TEMP_MIN_VALID) ? (int16_t)(tempAcc / tempCnt * 10.0f)
                                     : INT16_MIN;      // too few samples: void
     tempAcc = 0; tempCnt = 0;
+    for (int i = 0; i < TEMP_BUCKETS - 1; i++) ambHist[i] = ambHist[i + 1];
+    ambHist[TEMP_BUCKETS - 1] =
+        (ambCnt >= TEMP_MIN_VALID) ? (int16_t)(ambAcc / ambCnt * 10.0f)
+                                   : INT16_MIN;
+    ambAcc = 0; ambCnt = 0;
     if (tempFilled < TEMP_BUCKETS) tempFilled++;
   }
 }

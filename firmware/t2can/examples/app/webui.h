@@ -45,6 +45,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .dimtbl td.nm{white-space:nowrap}
 .dimtbl td.bt{width:74px}
 .dimtbl button{width:100%;min-width:0;padding:9px 6px;font-size:14px}
+.ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px}
 .ro{font-size:15px;color:var(--mut);display:inline-block;line-height:1.2}
 .dimtbl input[type=range]{width:100%;margin:0;vertical-align:middle}
 .dimtbl tr.mst td{border-top:1px solid #2a3440;padding-top:9px}
@@ -76,6 +77,8 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <span><button id="cf0">Auto</button> <button id="cf1">Low</button> <button id="cf2">High</button></span></div>
 <div class="row sub2"><span class="name">Cool setpoint</span>
 <span><button id="cooldn">&minus;</button> <b id="coolsp">--</b> <button id="coolup">+</button></span></div>
+<div class="row sub2" id="ambsumrow" style="display:none"><span class="name sub" id="ambsum"></span></div>
+<div id="ambchart" style="overflow-x:auto"></div>
 </div>
 
 <h2>Roof vent</h2><div class="card">
@@ -108,8 +111,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </div>
 
 <h2>Phone app integration board temp</h2><div class="card">
-<div class="row"><span class="name" id="tempsum">collecting…</span>
-<button id="tempdemo" style="min-width:0;padding:4px 10px;font-size:12px">demo</button></div>
+<div class="row" id="tempsumrow" style="display:none"><span class="name sub" id="tempsum"></span></div>
 <div id="tempchart" style="overflow-x:auto"></div>
 </div>
 
@@ -486,50 +488,48 @@ async function poll(){
     // Pack summary, then the bus counters. CAN2's age is the one that matters:
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
-    // DEMO: set window.tempDemo=1 in the console to render synthetic history
-    // and check the layout without waiting days for real samples.
-    // Demo data is built once and reused; regenerating it each poll made the
-    // chart twitch every second and hid whether the layout was right.
-    if(window.tempDemo){
-      if(!window.tempDemoData){
-        const d=[];
-        for(let i=0;i<121;i++){
-          const hour=(i%24);
-          const base=118+14*Math.sin((hour-9)/24*2*Math.PI);
-          d.push(Math.round(base+(Math.random()*3-1.5)));
-        }
-        window.tempDemoData=d;
-      }
-      drawTemp(window.tempDemoData,121);
-    }
-    else if(j.temphist) drawTemp(j.temphist, j.tempfill||0);
+    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null, null,
+      "Board temp chart will appear here as data becomes available (15m).");
+    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart", "ambsum",
+      "Internal temp chart will appear here as data becomes available (15m).");
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
 }
 
 // --- board temperature chart ------------------------------------------------------
-// 121 hourly buckets: 120 whole hours plus the one in progress. The board has
-// no calendar -- millis() resets on boot -- so the axis is relative, "-5d" to
-// "now". Hours with too little data arrive as null and are drawn as gaps, not
+// One bucket per hour: DAYS*24 whole hours plus the one in progress. The board
+// has no calendar -- millis() resets on boot -- so the axis is relative,
+// "-Nd" through to "now". Hours with too little data arrive as null and are drawn as gaps, not
 // interpolated across.
-function drawTemp(hist, fill){
+function drawTemp(hist, fill, days, elId, sumId, ph){
   if(!hist||!hist.length)return;
-  const W=480,H=110,PAD=18,YW=30;   // YW: gutter for the y-axis labels
+  const DAYS=days||Math.round((hist.length-1)/24);   // derived, never hardcoded
+  // YW/YR: label gutters. The chart scrolls horizontally, so the axis is
+  // repeated on the right -- otherwise reading a value means scrolling five
+  // days back to find the scale.
+  const W=510,H=118,PAD=18,YW=30,YR=30,TOP=8;
   const vals=hist.filter(v=>v!=null);
   if(!vals.length){
-    document.getElementById("tempchart").innerHTML=
-      '<div class="sub">no samples yet</div>';
+    document.getElementById(elId||"tempchart").innerHTML=
+      '<div class="ph">'+(ph||"Chart will appear here as data becomes available (15m).")+'</div>';
+    document.getElementById((sumId||"tempsum")+"row").style.display="none";
     return;
   }
-  let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
-  if(hi-lo<4){const m=(hi+lo)/2;lo=m-2;hi=m+2;}          // avoid a flat scale
-  const PW=W-YW;                     // plot width, right of the label gutter
+  // Keep the real data range for the summary, and scale the axis to the tens
+  // that enclose it -- 103..131 gives 100..140. No extra padding: snapping
+  // outward already leaves room, and adding 5 first pushed it a whole step too
+  // far.
+  const dlo=Math.min.apply(null,vals), dhi=Math.max.apply(null,vals);
+  let lo=Math.floor(dlo/10)*10;
+  let hi=Math.ceil(dhi/10)*10;
+  if(hi-lo<20){hi=lo+20;}                                // never a flat scale
+  const PW=W-YW-YR;                  // plot width, between the two gutters
   const bw=PW/hist.length;
   let bars="";
   hist.forEach((v,i)=>{
     if(v==null)return;                                    // gap: draw nothing
-    const h=Math.max(1,(v-lo)/(hi-lo)*(H-PAD));
+    const h=Math.max(1,(v-lo)/(hi-lo)*(H-PAD-TOP));
     bars+=`<rect x="${(YW+i*bw).toFixed(2)}" y="${(H-PAD-h).toFixed(2)}" `+
           `width="${Math.max(1,bw).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--ac)"/>`;
   });
@@ -539,33 +539,44 @@ function drawTemp(hist, fill){
   const TMAX=185;
   let yaxis="";
   if(TMAX>=lo&&TMAX<=hi){
-    const y=H-PAD-(TMAX-lo)/(hi-lo)*(H-PAD);
-    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" `+
+    const y=H-PAD-(TMAX-lo)/(hi-lo)*(H-PAD-TOP);
+    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
            `stroke="#c0392b" stroke-width="1.5"/>`;
-    yaxis+=`<text x="${W-52}" y="${(y-3).toFixed(1)}" fill="#c0392b" font-size="10">`+
+    yaxis+=`<text x="${YW+4}" y="${(y-3).toFixed(1)}" fill="#c0392b" font-size="10">`+
            `85°C max</text>`;
   }
-  [0,0.5,1].forEach(f=>{
-    const v=lo+(hi-lo)*f;
-    const y=H-PAD-f*(H-PAD);
-    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" `+
+  // Minor gridlines every 5 F, unlabelled -- they give a finer reference
+  // without crowding the gutters with numbers.
+  for(let v=lo+5;v<hi;v+=10){
+    const y=H-PAD-(v-lo)/(hi-lo)*(H-PAD-TOP);
+    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
+           `stroke="#222a33" stroke-width="1"/>`;
+  }
+  const ticks=[];
+  for(let v=lo;v<=hi+0.5;v+=10) ticks.push(v);
+  ticks.forEach(v=>{
+    const f=(v-lo)/(hi-lo);
+    const y=H-PAD-f*(H-PAD-TOP);
+    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
            `stroke="#2a3440" stroke-width="1"/>`;
     yaxis+=`<text x="0" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
            `${v.toFixed(0)}°</text>`;
+    yaxis+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
+           `${v.toFixed(0)}°</text>`;
   });
-  // day gridlines + labels, oldest (-5d) at the left through to now
+  // day gridlines + labels, oldest at the left through to now
   let axis="";
-  for(let d=0;d<=5;d++){
+  for(let d=0;d<=DAYS;d++){
     const x=YW+(d*24)*bw;
-    axis+=`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
+    axis+=`<line x1="${x.toFixed(1)}" y1="${TOP}" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
           `stroke="#2a3440" stroke-width="1"/>`;
-    const lbl=d===5?"now":("-"+(5-d)+"d");
+    const lbl=d===DAYS?"now":("-"+(DAYS-d)+"d");
     // The last label sits on the right edge, so anchor it inward or it clips.
-    const anc=d===5?'text-anchor="end"':'';
-    const lx=d===5?x-2:x+2;
+    const anc=d===DAYS?'text-anchor="end"':'';
+    const lx=d===DAYS?x-2:x+2;
     axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
   }
-  const box=document.getElementById("tempchart");
+  const box=document.getElementById(elId||"tempchart");
   // Keep the newest data in view. The chart is wider than a phone screen, and
   // with only a few hours of history everything sits at the right-hand edge --
   // which looked blank until you scrolled. Anchor right, and leave the user
@@ -574,8 +585,11 @@ function drawTemp(hist, fill){
   box.innerHTML=
     `<svg width="${W}" height="${H}" style="min-width:${W}px">${yaxis}${axis}${bars}</svg>`;
   if(wasRight||box._first===undefined){box.scrollLeft=box.scrollWidth;box._first=1;}
-  document.getElementById("tempsum").textContent=
-    `${lo.toFixed(0)}–${hi.toFixed(0)}°F over ${fill<121?fill+"h so far":"5 days"}`;
+  const sid=sumId||"tempsum";
+  document.getElementById(sid).textContent=
+    `${dlo.toFixed(0)}–${dhi.toFixed(0)}°F over `+
+    `${fill<hist.length?fill+"h so far":DAYS+" days"}`;
+  document.getElementById(sid+"row").style.display="flex";
 }
 
 // --- remaining buttons ------------------------------------------------------------------
@@ -602,15 +616,6 @@ document.querySelectorAll('input[type=range]').forEach(el=>{
   el.addEventListener("touchend",up,{passive:true});
   el.addEventListener("blur",up);
 });
-// Tap to fill the chart with a synthetic five-day cycle -- lets the layout and
-// scrolling be checked now instead of after days of real samples. Tap again
-// to return to live data.
-document.getElementById("tempdemo").onclick=()=>{
-  window.tempDemo=!window.tempDemo;
-  document.getElementById("tempdemo").className=window.tempDemo?"on":"";
-  const box=document.getElementById("tempchart"); box._first=undefined;
-  poll();
-};
 document.getElementById("coolup").onclick=()=>stepCool(1);
 document.getElementById("cooldn").onclick=()=>stepCool(-1);
 for(let i=0;i<4;i++)paintLight(i); for(let i=0;i<3;i++)paint(i);
