@@ -104,12 +104,13 @@ CAN interfaces) that taps both buses and serves a phone web UI over its own
 WiFi access point. The stock firmware is never modified — **no flashing, no
 brick risk.** See [`hardware-and-tap.md`](docs/hardware-and-tap.md).
 
-> **Change the AP password before you flash.** The board has no screen or reset
-> button, so the SSID and password are compiled in
-> ([`app.ino`](firmware/t2can/examples/app/app.ino), top of file) and the
-> default is published in this repo. Anyone in radio range who has read the
-> source could otherwise join and operate the van. The build prints a warning
-> until you change it.
+> **Set your own AP credentials before you flash.** The board has no screen or
+> reset button, so the SSID and password are compiled in, and the placeholders
+> are published here — anyone in radio range who has read the source could
+> otherwise join and operate the van. Copy
+> [`ap_secret.h.example`](firmware/t2can/examples/app/ap_secret.h.example) to
+> `ap_secret.h` and edit it; that file is git-ignored. The build warns until
+> you do.
 
 ## Repo layout
 

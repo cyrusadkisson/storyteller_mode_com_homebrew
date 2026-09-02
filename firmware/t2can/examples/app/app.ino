@@ -44,18 +44,31 @@
 #include "driver/twai.h"
 
 // ----- WiFi AP ---------------------------------------------------------------
-// CHANGE THE PASSWORD BEFORE YOU FLASH THIS. It is in the public repo, so the
-// default is not a secret -- anyone within radio range who has read the source
-// can join and operate the van's lights, pump, A/C and vent. There is no
-// screen or reset button on this board, so the credentials are set here at
-// build time; pick something and write it down.
-static const char *AP_SSID = "VanCompanion";
-static const char *AP_PASS = "storyteller";   // <-- CHANGE ME (8+ chars, WPA2)
-static const char *MDNS_NAME = "van";         // http://van.local
-
-#if 1   // delete this guard once you have set your own password above
-#warning "Using the default AP password from the public repo -- change AP_PASS."
+// SET YOUR OWN CREDENTIALS BEFORE FLASHING. Anyone within radio range who has
+// read this source can otherwise join and operate the van's lights, pump, A/C
+// and vent. There is no screen or reset button on this board, so credentials
+// are compiled in; pick something and write it down.
+//
+// KEEP REAL CREDENTIALS OUT OF THE REPOSITORY. Put them in ap_secret.h, which
+// is git-ignored:
+//
+//     #define AP_SSID_OVERRIDE "YourSSID"
+//     #define AP_PASS_OVERRIDE "YourPassword"
+//
+// Without that file the build uses the placeholders below and warns.
+#if __has_include("ap_secret.h")
+#include "ap_secret.h"
 #endif
+#ifndef AP_SSID_OVERRIDE
+#define AP_SSID_OVERRIDE "VanCompanion"
+#endif
+#ifndef AP_PASS_OVERRIDE
+#define AP_PASS_OVERRIDE "storyteller"
+#warning "Using the placeholder AP password from the public repo -- create ap_secret.h."
+#endif
+static const char *AP_SSID = AP_SSID_OVERRIDE;
+static const char *AP_PASS = AP_PASS_OVERRIDE;
+static const char *MDNS_NAME = "van";         // http://van.local
 
 #define CANB_TX GPIO_NUM_7
 #define CANB_RX GPIO_NUM_6

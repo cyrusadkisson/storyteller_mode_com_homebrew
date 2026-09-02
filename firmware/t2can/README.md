@@ -16,9 +16,10 @@ Build with `pio run` from this directory; flash with `pio run -t upload`.
   with a captive portal and mDNS `van.local`, on a single page covering the
   switch toggles (input spoof), A/C, roof vent and inverter, over a live state
   layer (per-channel current, tanks, battery, temperatures, fault frames).
-  `default_envs = app`. **Set your own `AP_SSID`/`AP_PASS` at the top of
-  `app.ino` before flashing** — the defaults are published in this repo, and
-  the build warns until you change them.
+  `default_envs = app`. **Set your own WiFi credentials before flashing** —
+  copy `examples/app/ap_secret.h.example` to `ap_secret.h` and edit it. That
+  file is git-ignored, so real credentials stay out of the repository; without
+  it the build falls back to the published placeholders and warns.
 - `examples/companion/` — the serial-command precursor to `app`. Same two-bus
   core and commands, driven over the USB serial console instead of WiFi.
 - `examples/bench250k/` — bench milestone: emits the van's real 29-bit PDM

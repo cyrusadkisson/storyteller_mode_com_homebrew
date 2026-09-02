@@ -55,7 +55,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
 <h2>Battery</h2><div class="card">
-<div class="row"><span class="name">Life:</span>
+<div class="row"><span class="name">SoC:</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
 <div class="row"><span>Power flow:</span>
 <span><span id="drawline">--</span><span id="lifeline"></span></span></div>
