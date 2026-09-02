@@ -108,7 +108,8 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </div>
 
 <h2>Phone app integration board temp</h2><div class="card">
-<div class="row"><span class="name" id="tempsum">collecting…</span></div>
+<div class="row"><span class="name" id="tempsum">collecting…</span>
+<button id="tempdemo" style="min-width:0;padding:4px 10px;font-size:12px">demo</button></div>
 <div id="tempchart" style="overflow-x:auto"></div>
 </div>
 
@@ -485,7 +486,23 @@ async function poll(){
     // Pack summary, then the bus counters. CAN2's age is the one that matters:
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
-    if(j.temphist) drawTemp(j.temphist, j.tempfill||0);
+    // DEMO: set window.tempDemo=1 in the console to render synthetic history
+    // and check the layout without waiting days for real samples.
+    // Demo data is built once and reused; regenerating it each poll made the
+    // chart twitch every second and hid whether the layout was right.
+    if(window.tempDemo){
+      if(!window.tempDemoData){
+        const d=[];
+        for(let i=0;i<121;i++){
+          const hour=(i%24);
+          const base=118+14*Math.sin((hour-9)/24*2*Math.PI);
+          d.push(Math.round(base+(Math.random()*3-1.5)));
+        }
+        window.tempDemoData=d;
+      }
+      drawTemp(window.tempDemoData,121);
+    }
+    else if(j.temphist) drawTemp(j.temphist, j.tempfill||0);
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
@@ -498,7 +515,7 @@ async function poll(){
 // interpolated across.
 function drawTemp(hist, fill){
   if(!hist||!hist.length)return;
-  const W=480,H=90,PAD=18;
+  const W=480,H=110,PAD=18,YW=30;   // YW: gutter for the y-axis labels
   const vals=hist.filter(v=>v!=null);
   if(!vals.length){
     document.getElementById("tempchart").innerHTML=
@@ -507,25 +524,56 @@ function drawTemp(hist, fill){
   }
   let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
   if(hi-lo<4){const m=(hi+lo)/2;lo=m-2;hi=m+2;}          // avoid a flat scale
-  const bw=W/hist.length;
+  const PW=W-YW;                     // plot width, right of the label gutter
+  const bw=PW/hist.length;
   let bars="";
   hist.forEach((v,i)=>{
     if(v==null)return;                                    // gap: draw nothing
     const h=Math.max(1,(v-lo)/(hi-lo)*(H-PAD));
-    bars+=`<rect x="${(i*bw).toFixed(2)}" y="${(H-PAD-h).toFixed(2)}" `+
+    bars+=`<rect x="${(YW+i*bw).toFixed(2)}" y="${(H-PAD-h).toFixed(2)}" `+
           `width="${Math.max(1,bw).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--ac)"/>`;
+  });
+  // ESP32-S3 maximum rated ambient is 85 °C = 185 °F. Drawn only when the
+  // current scale actually reaches it -- an off-scale line would be
+  // misleading, and a line pinned to the top edge doubly so.
+  const TMAX=185;
+  let yaxis="";
+  if(TMAX>=lo&&TMAX<=hi){
+    const y=H-PAD-(TMAX-lo)/(hi-lo)*(H-PAD);
+    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" `+
+           `stroke="#c0392b" stroke-width="1.5"/>`;
+    yaxis+=`<text x="${W-52}" y="${(y-3).toFixed(1)}" fill="#c0392b" font-size="10">`+
+           `85°C max</text>`;
+  }
+  [0,0.5,1].forEach(f=>{
+    const v=lo+(hi-lo)*f;
+    const y=H-PAD-f*(H-PAD);
+    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" `+
+           `stroke="#2a3440" stroke-width="1"/>`;
+    yaxis+=`<text x="0" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
+           `${v.toFixed(0)}°</text>`;
   });
   // day gridlines + labels, oldest (-5d) at the left through to now
   let axis="";
   for(let d=0;d<=5;d++){
-    const x=(d*24)*bw;
+    const x=YW+(d*24)*bw;
     axis+=`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
           `stroke="#2a3440" stroke-width="1"/>`;
     const lbl=d===5?"now":("-"+(5-d)+"d");
-    axis+=`<text x="${(x+2).toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10">${lbl}</text>`;
+    // The last label sits on the right edge, so anchor it inward or it clips.
+    const anc=d===5?'text-anchor="end"':'';
+    const lx=d===5?x-2:x+2;
+    axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
   }
-  document.getElementById("tempchart").innerHTML=
-    `<svg width="${W}" height="${H}" style="min-width:${W}px">${axis}${bars}</svg>`;
+  const box=document.getElementById("tempchart");
+  // Keep the newest data in view. The chart is wider than a phone screen, and
+  // with only a few hours of history everything sits at the right-hand edge --
+  // which looked blank until you scrolled. Anchor right, and leave the user
+  // scrolled where they put it if they have gone looking at older data.
+  const wasRight = box.scrollWidth - box.clientWidth - box.scrollLeft < 4;
+  box.innerHTML=
+    `<svg width="${W}" height="${H}" style="min-width:${W}px">${yaxis}${axis}${bars}</svg>`;
+  if(wasRight||box._first===undefined){box.scrollLeft=box.scrollWidth;box._first=1;}
   document.getElementById("tempsum").textContent=
     `${lo.toFixed(0)}–${hi.toFixed(0)}°F over ${fill<121?fill+"h so far":"5 days"}`;
 }
@@ -554,6 +602,15 @@ document.querySelectorAll('input[type=range]').forEach(el=>{
   el.addEventListener("touchend",up,{passive:true});
   el.addEventListener("blur",up);
 });
+// Tap to fill the chart with a synthetic five-day cycle -- lets the layout and
+// scrolling be checked now instead of after days of real samples. Tap again
+// to return to live data.
+document.getElementById("tempdemo").onclick=()=>{
+  window.tempDemo=!window.tempDemo;
+  document.getElementById("tempdemo").className=window.tempDemo?"on":"";
+  const box=document.getElementById("tempchart"); box._first=undefined;
+  poll();
+};
 document.getElementById("coolup").onclick=()=>stepCool(1);
 document.getElementById("cooldn").onclick=()=>stepCool(-1);
 for(let i=0;i<4;i++)paintLight(i); for(let i=0;i<3;i++)paint(i);

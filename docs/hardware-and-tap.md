@@ -117,7 +117,7 @@ right there in the same connector.
 | Part | Needed for | Note |
 |---|---|---|
 | **LILYGO T-2CAN-FD** (ESP32-S3) | the companion box | **Two independent CAN interfaces**, which this van requires — CAN1 for loads/climate, CAN2 for battery. MCP2518FD over SPI + the ESP32's own TWAI, both on isolated TD501MCAN transceivers. ~$25-30. |
-| **T-tap / Posi-Tap** connectors, 18-20 AWG | the bus tap | **Six** — green and yellow on each bus, plus a ground lead per bus. Both grounds go to the same pin-8 gray wire: the transceivers are independently isolated, so each channel needs its own reference, but there is only one ground in the connector. Taps the wires without cutting. |
+| **Posi-Tap** connectors, 18-20 AWG | the bus tap | **Six** — green and yellow on each bus, plus a ground lead per bus. Both grounds go to the same pin-8 gray wire: the transceivers are independently isolated, so each channel needs its own reference, but there is only one ground in the connector. Taps the wires without cutting. **Prefer screw-clamp Posi-Taps over blade-type T-taps** — see below. |
 | **Hook-up wire, 22-24 AWG** | the runs from tap to box | CAN is signal-level (µA); gauge is about handling, not current. |
 | USB-C cable (**data**, not charge-only) | power + flashing | A charge-only cable powers the board fine and silently fails to enumerate — an easy hour to lose. |
 | **CANable** USB-CAN adapter | development only | See below. Not needed to install a working box. |
@@ -131,6 +131,44 @@ connector, or anything for 12V wiring.
 0.5 A there is no reason to build a 12V feed for it. If your outlet is
 switched with the house system the box sleeps with the van; if it stays hot in
 storage it is a small parasitic drain, worth knowing either way.
+
+### Blade T-taps are the weak link (learned the hard way)
+
+A blade-type T-tap forces a blade through the insulation to reach a few
+strands. That is adequate on a bench and marginal in a vehicle: the contact
+area is small, and vibration or a disturbed harness can let the blade migrate
+off the conductor.
+
+**Observed on this van:** after the companion board was mounted, CAN1 went
+intermittent — the adapter's activity LED alternating between solid and
+blinking as the loom was moved. Five of six taps were solid; one had gone
+finicky. The failure presents as a **total CAN1 dropout**, which is easy to
+misread as the van being asleep or the software failing: switches stop
+working, tanks and climate and vent readings blank out, while CAN2 battery
+data keeps flowing normally because it is a separate pair.
+
+Diagnosing it takes a minute if you look at the right thing:
+
+```bash
+ip -details -statistics link show can0     # ERROR-ACTIVE, zero errors, zero RX
+```
+
+**Zero frames AND zero errors means the adapter is not electrically on the
+bus.** A live bus with a wiring fault produces errors; a genuinely idle bus is
+rare while the panel is awake. If the screen works, the bus is busy — so
+silence is a connection problem, full stop. Jiggling the loom to see whether
+the state changes confirms it immediately.
+
+Recommendations:
+
+- Use **screw-clamp Posi-Taps** rather than blade T-taps for anything
+  permanent. Still reversible, no cutting, far better vibration tolerance.
+- Match the tap to the wire gauge; a tap sized for thicker wire bites poorly.
+- Tug-test every tap on install, and re-seat on fresh insulation if one
+  becomes suspect rather than re-clamping the same spot.
+- For a build meant to be handed to someone else, an **inline mating AMPSEAL
+  connector** with properly crimped pins avoids taps altogether: no
+  modification to factory wiring, fully reversible, and nothing to work loose.
 
 ### Is the CANable optional?
 
