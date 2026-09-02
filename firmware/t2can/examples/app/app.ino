@@ -70,6 +70,27 @@ static const char *AP_SSID = AP_SSID_OVERRIDE;
 static const char *AP_PASS = AP_PASS_OVERRIDE;
 static const char *MDNS_NAME = "van";         // http://van.local
 
+// ----- board temperature history --------------------------------------------
+// The ESP32-S3 has no RTC and millis() resets on every boot, so history is
+// RELATIVE: 120 completed hourly buckets plus the hour in progress = 121 bars.
+// Kept in RAM (~500 bytes) rather than flash -- the board is on permanent DC
+// and only loses power on a full system shutdown, where losing history is
+// acceptable and the alternative is thousands of flash write cycles.
+//
+// This reads the DIE, not the cavity: it runs above ambient by the chip's own
+// dissipation plus the WiFi radio. Absolute accuracy is a few degrees; the
+// useful signal is the shape over a day.
+#define TEMP_BUCKETS   121          // 120 whole hours + the current one
+#define TEMP_SAMPLE_MS 30000        // one reading per 30 s
+#define TEMP_MIN_VALID 30           // >=15 min of samples or the hour is void
+static bool     tempOK = true;   // Arduino's temperatureRead() needs no setup
+static int16_t  tempHist[TEMP_BUCKETS];   // tenths of °C; INT16_MIN = no data
+static float    tempAcc = 0;              // current hour accumulator
+static uint16_t tempCnt = 0;
+static uint32_t tempLastSample = 0;
+static uint32_t tempHourStart = 0;
+static uint16_t tempFilled = 0;           // buckets rotated so far
+
 #define CANB_TX GPIO_NUM_7
 #define CANB_RX GPIO_NUM_6
 
@@ -453,7 +474,9 @@ void onCanBFrame(const twai_message_t &m) {
 }
 
 // ----- JSON state ----------------------------------------------------------------
-static char jbuf[2048];
+// 121 temperature buckets add ~600 bytes on top of the rest of the state, and
+// the J() macro truncates silently once the buffer fills.
+static char jbuf[3584];
 
 void sendState() {
   char *w = jbuf;
@@ -575,6 +598,20 @@ void sendState() {
   else J("\"fresh\":null,\"gray\":null,");
 
   {
+    // Temperature history: 121 buckets, oldest first, tenths of °F.
+    // null marks an hour with too few samples or no data at all.
+    J("\"temphist\":[");
+    for (int i = 0; i < TEMP_BUCKETS; i++) {
+      int16_t v = tempHist[i];
+      if (i == TEMP_BUCKETS - 1 && tempCnt >= TEMP_MIN_VALID)
+        v = (int16_t)(tempAcc / tempCnt * 10.0f);      // hour in progress
+      if (v == INT16_MIN) J("%snull", i ? "," : "");
+      else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
+    }
+    J("],\"tempnow\":%.1f,\"tempfill\":%u,",
+      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled);
+  }
+  {
     char ft[200];
     snprintf(ft, sizeof ft, "CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
              (unsigned long)cntA, (unsigned long)cntB,
@@ -688,6 +725,11 @@ void setup() {
   delay(300);
   Serial.println("companion app: boot");
 
+  for (int i = 0; i < TEMP_BUCKETS; i++) tempHist[i] = INT16_MIN;
+  Serial.printf("temp sensor: %.1f C\n", temperatureRead());
+  tempHourStart = millis();
+  tempLastSample = millis();
+
   canMux = xSemaphoreCreateMutex();
   SPI.begin(MCP2518_SCLK, MCP2518_MISO, MCP2518_MOSI, MCP2518_CS);
   if (CanA.begin(CAN20_250KBPS, MCP2518FD_40MHz) == CAN_OK) Serial.println("canA: CAN1 250k OK");
@@ -755,8 +797,35 @@ void canTask(void *) {
   }
 }
 
+// Roll the accumulator into a bucket every hour. All timing uses unsigned
+// subtraction so the 49.7-day millis() rollover is handled -- this box can run
+// for months, and a naive comparison would corrupt the history at ~7 weeks.
+void tempTick() {
+  if (!tempOK) return;
+  uint32_t now = millis();
+  if ((uint32_t)(now - tempLastSample) >= TEMP_SAMPLE_MS) {
+    tempLastSample = now;
+    float c = temperatureRead();          // °C, ESP32-S3 internal die sensor
+    if (c > -40.0f && c < 125.0f) {       // ignore the out-of-range error value
+      tempAcc += c;
+      tempCnt++;
+    }
+  }
+  if ((uint32_t)(now - tempHourStart) >= 3600000UL) {
+    tempHourStart += 3600000UL;
+    // Shift the ring left; the newest completed hour lands at the end.
+    for (int i = 0; i < TEMP_BUCKETS - 1; i++) tempHist[i] = tempHist[i + 1];
+    tempHist[TEMP_BUCKETS - 1] =
+        (tempCnt >= TEMP_MIN_VALID) ? (int16_t)(tempAcc / tempCnt * 10.0f)
+                                    : INT16_MIN;      // too few samples: void
+    tempAcc = 0; tempCnt = 0;
+    if (tempFilled < TEMP_BUCKETS) tempFilled++;
+  }
+}
+
 void loop() {
   server.handleClient();
   dns.processNextRequest();
+  tempTick();
   vTaskDelay(1);
 }

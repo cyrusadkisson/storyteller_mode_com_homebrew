@@ -107,6 +107,11 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
+<h2>Phone app integration board temp</h2><div class="card">
+<div class="row"><span class="name" id="tempsum">collecting…</span></div>
+<div id="tempchart" style="overflow-x:auto"></div>
+</div>
+
 <div id="foot"></div>
 <script>
 // --- switch rows ---------------------------------------------------------------
@@ -480,9 +485,49 @@ async function poll(){
     // Pack summary, then the bus counters. CAN2's age is the one that matters:
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
+    if(j.temphist) drawTemp(j.temphist, j.tempfill||0);
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
+}
+
+// --- board temperature chart ------------------------------------------------------
+// 121 hourly buckets: 120 whole hours plus the one in progress. The board has
+// no calendar -- millis() resets on boot -- so the axis is relative, "-5d" to
+// "now". Hours with too little data arrive as null and are drawn as gaps, not
+// interpolated across.
+function drawTemp(hist, fill){
+  if(!hist||!hist.length)return;
+  const W=480,H=90,PAD=18;
+  const vals=hist.filter(v=>v!=null);
+  if(!vals.length){
+    document.getElementById("tempchart").innerHTML=
+      '<div class="sub">no samples yet</div>';
+    return;
+  }
+  let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  if(hi-lo<4){const m=(hi+lo)/2;lo=m-2;hi=m+2;}          // avoid a flat scale
+  const bw=W/hist.length;
+  let bars="";
+  hist.forEach((v,i)=>{
+    if(v==null)return;                                    // gap: draw nothing
+    const h=Math.max(1,(v-lo)/(hi-lo)*(H-PAD));
+    bars+=`<rect x="${(i*bw).toFixed(2)}" y="${(H-PAD-h).toFixed(2)}" `+
+          `width="${Math.max(1,bw).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--ac)"/>`;
+  });
+  // day gridlines + labels, oldest (-5d) at the left through to now
+  let axis="";
+  for(let d=0;d<=5;d++){
+    const x=(d*24)*bw;
+    axis+=`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
+          `stroke="#2a3440" stroke-width="1"/>`;
+    const lbl=d===5?"now":("-"+(5-d)+"d");
+    axis+=`<text x="${(x+2).toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10">${lbl}</text>`;
+  }
+  document.getElementById("tempchart").innerHTML=
+    `<svg width="${W}" height="${H}" style="min-width:${W}px">${axis}${bars}</svg>`;
+  document.getElementById("tempsum").textContent=
+    `${lo.toFixed(0)}–${hi.toFixed(0)}°F over ${fill<121?fill+"h so far":"5 days"}`;
 }
 
 // --- remaining buttons ------------------------------------------------------------------
