@@ -46,6 +46,8 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .dimtbl td.bt{width:74px}
 .dimtbl button{width:100%;min-width:0;padding:9px 6px;font-size:14px}
 .qual{font-size:11px;color:#77838f}
+.warn{font-size:13px;color:#e0a458;background:#2a2318;border-radius:8px;padding:8px;margin-bottom:6px}
+.stale{opacity:.45}
 .ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px}
 .ro{font-size:15px;color:var(--mut);display:inline-block;line-height:1.2}
 .dimtbl input[type=range]{width:100%;margin:0;vertical-align:middle}
@@ -57,7 +59,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
 <h2>Battery</h2><div class="card">
-<div class="row"><span class="name">SoC:</span>
+<div class="row"><span class="name">State of charge:</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
 <div class="row"><span>Power flow:</span><span id="drawline">--</span></div>
 <div class="row" id="pwrsumrow" style="display:none"><span class="name sub" id="pwrsum"></span></div>
@@ -66,6 +68,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches</h2><div class="card">
+<div id="can1warn" class="warn" style="display:none">Control bus not responding — states below are last known, and controls will not take effect.</div>
 <table class="dimtbl"><tbody id="switches"></tbody></table></div>
 
 <h2 style="display:flex;justify-content:space-between;align-items:baseline">Climate
@@ -126,10 +129,10 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 // plain wall-switch spoofs with no dimming.
 // dimIdx maps a light row to the firmware's LIGHT_DO order; swIdx maps a
 // plain row to the SW[] spoof table.
-const LIGHTS=["cabin lights","cargo lights","reading lights","awning lights"];
+const LIGHTS=["Cabin lights","Cargo lights","Reading lights","Awning lights"];
 const LIGHT_CTL=[1,1,0,1];   // reading has no wall switch -> status only
 const LIGHT_SW=[0,1,-1,5];   // index into the firmware's SW[] spoof table
-const PLAIN=[{n:"aux",sw:3},{n:"water pump",sw:2},{n:"hot water circ.",sw:4}];
+const PLAIN=[{n:"Aux",sw:3},{n:"Water pump",sw:2},{n:"Hot water circ.",sw:4}];
 const lHold=[0,0,0,0], lOn=[0,0,0,0], lPct=[0,0,0,0];
 
 const holdUntil=[0,0,0], curP=[0,0,0];
@@ -164,7 +167,7 @@ PLAIN.forEach((p,i)=>{
 // write to. Reported, never controlled.
 {
   const r=document.createElement("tr");
-  r.innerHTML=`<td class="nm">battery&rarr;galley fans</td>`+
+  r.innerHTML=`<td class="nm">Battery&rarr;galley fans</td>`+
               `<td class="bt" style="text-align:center"><span id="gfan" class="ro">--</span></td>`;
   tb.appendChild(r);
 }
@@ -425,7 +428,7 @@ async function poll(){
     document.getElementById("socbar").style.width=(j.soc!=null?j.soc:0)+"%";
     // Battery-compartment fans: report the commanded level, not current.
     const gf=document.getElementById("gfan");
-    if(gf) gf.textContent=j.gfan==null?"--":(j.gfan>0?"on, auto":"off, auto");
+    if(gf) gf.textContent=(j.gfan==null||j.gfan<0)?"--":(j.gfan>0?"on, auto":"off, auto");
     document.getElementById("tempin").textContent=
       j.tempin!=null?(j.tempin.toFixed(0)+"°F inside"):"";
     if(j.lights) LIGHTS.forEach((n,i)=>{
@@ -511,6 +514,16 @@ async function poll(){
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
     if(j.pwrhist) drawPower(j.pwrhist, j.tempfill||0, j.tempdays);
+    // CAN1 liveness: the head unit re-asserts PDM levels at ~91 Hz, so silence
+    // means the bus is gone, not that nothing changed. Say so rather than
+    // leaving stale switch states looking actionable.
+    {
+      const live=j.can1!==0;
+      document.getElementById("can1warn").style.display=live?"none":"block";
+      document.getElementById("switches").className=live?"":"stale";
+      const cc=document.getElementById("climcard");
+      if(cc) cc.className=live?"card":"card stale";
+    }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null, null,
       "Board temp chart will appear here as data becomes available (15m).");
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart", "ambsum",

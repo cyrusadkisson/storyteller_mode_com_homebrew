@@ -198,6 +198,14 @@ static bool     seenBatt = false, seenTank = false;
 // Correctness cannot depend on someone noticing a frame counter.
 static uint32_t battAt = 0;
 #define BATT_STALE_MS 5000
+// The same reasoning applies to CAN1. The head unit re-asserts PDM levels at
+// ~91 Hz, so a gap of even a second is abnormal; if the bus goes quiet -- a
+// tap works loose, the loom is disturbed -- the last levels would otherwise
+// sit on screen indefinitely, showing switch states that no longer reflect
+// anything and cannot be acted on. Observed on this van 2026-09-02 with a
+// finicky T-tap: the app kept displaying yesterday's lights.
+static uint32_t pdmAt = 0;
+#define PDM_STALE_MS 3000
 static uint8_t  acB1 = 0, acFan = 0;
 // Fan (wire-verified 2026-08-25): byte1 high nibble 0=auto, 1=manual;
 // byte2 = speed, 0x64 low / 0xC8 high. byte1 0x10 = fan-only (compressor off).
@@ -368,6 +376,7 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
   if (len < 8) return;
 
   if (id == ID_PDM1_CMD || id == ID_PDM2_CMD) {          // HU -> PDM levels
+    pdmAt = millis();
     uint8_t p = (id == ID_PDM2_CMD);
     if (b[0] == 0xFC) {
       for (int ch = 1; ch <= 6; ch++) doLevel[p][ch] = b[ch];
@@ -541,7 +550,12 @@ void sendState() {
            "\"packline\":\"\",\"drawline\":\"--\",\"lifeline\":\"\",",
            seenBatt ? "CAN2 battery data stale" : "no CAN2 battery frames");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
-  J("\"gfan\":%d,", doLevel[GALLEY_FAN_PDM][GALLEY_FAN_DO]);
+  // Scoped: a declaration here would cross the J() macro's goto.
+  {
+    bool canAlive = pdmAt && (millis() - pdmAt < PDM_STALE_MS);
+    J("\"can1\":%d,", canAlive ? 1 : 0);
+    J("\"gfan\":%d,", canAlive ? doLevel[GALLEY_FAN_PDM][GALLEY_FAN_DO] : -1);
+  }
   if (seenInv && (millis() - invAcAt < AC_STALE_MS))
     J("\"invtext\":\"AC line %.0fV %.1fHz\",", invAcV, invHz);
   else if (seenInv) J("\"invtext\":\"no AC line data\",");
