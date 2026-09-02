@@ -94,6 +94,20 @@ static uint16_t tempCnt = 0;
 static int16_t  ambHist[TEMP_BUCKETS];
 static float    ambAcc = 0;
 static uint16_t ambCnt = 0;
+// Pack power, same buckets. Stored as whole WATTS (signed: negative is a
+// draw, positive a surplus) rather than tenths -- it ranges into the
+// hundreds and an int16 of tenths would overflow past 3.2 kW.
+static int16_t  pwrHist[TEMP_BUCKETS];
+static float    pwrAcc = 0;
+static uint16_t pwrCnt = 0;
+// Separate 30-minute ring for the smoothed time-remaining figure. The hourly
+// buckets are too coarse: the compressor and heater cycle several times an
+// hour, which is exactly the swing being averaged out. 360 samples at 5 s.
+#define PW30_N      360
+#define PW30_MS     5000
+static int16_t  pw30[PW30_N];
+static uint16_t pw30Head = 0, pw30Fill = 0;
+static uint32_t pw30At = 0;
 static uint32_t tempLastSample = 0;
 static uint32_t tempHourStart = 0;
 static uint16_t tempFilled = 0;           // buckets rotated so far
@@ -482,10 +496,11 @@ void onCanBFrame(const twai_message_t &m) {
 }
 
 // ----- JSON state ----------------------------------------------------------------
-// Two 169-bucket histories add ~2 KB on top of the rest of the state, and the
-// J() macro truncates silently once the buffer fills -- which would break the
-// whole response, not just the charts. Sized with headroom.
-static char jbuf[5120];
+// Three 169-bucket histories dominate this buffer: temps are ~5 chars each and
+// power can be 6 ("-1037,"), so worst case is ~4.9 KB before the rest of the
+// state. The J() macro truncates silently once full, which would break the
+// whole response rather than just a chart -- so size it with real headroom.
+static char jbuf[7168];
 
 void sendState() {
   char *w = jbuf;
@@ -625,8 +640,29 @@ void sendState() {
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
     }
+    J("],\"pwrhist\":[");
+    for (int i = 0; i < TEMP_BUCKETS; i++) {
+      int16_t v = pwrHist[i];
+      if (i == TEMP_BUCKETS - 1 && pwrCnt >= TEMP_MIN_VALID)
+        v = (int16_t)(pwrAcc / pwrCnt);
+      if (v == INT16_MIN) J("%snull", i ? "," : "");
+      else J("%s%d", i ? "," : "", v);
+    }
     J("],\"tempnow\":%.1f,\"tempfill\":%u,\"tempdays\":%d,",
       temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_DAYS);
+    // Mean power over the last 30 minutes, and the minutes remaining it
+    // implies. Needs a few minutes of samples before it means anything.
+    J("\"pw30n\":%u,", pw30Fill);
+    if (pw30Fill >= PW30_N) {                  // only once the FULL 30 min is in
+      float sum = 0;
+      for (uint16_t i = 0; i < pw30Fill; i++) sum += pw30[i];
+      float avgW = sum / pw30Fill;
+      float avgA = (battV > 1.0f) ? avgW / battV : 0.0f;
+      J("\"pwr30\":%.0f,", avgW);
+      if (avgA < -0.05f && battAh > 0)
+        J("\"rem30\":%u,", (unsigned)(battAh / -avgA * 60.0f));
+      else J("\"rem30\":null,");
+    } else J("\"pwr30\":null,\"rem30\":null,");
   }
   {
     char ft[200];
@@ -742,7 +778,9 @@ void setup() {
   delay(300);
   Serial.println("companion app: boot");
 
-  for (int i = 0; i < TEMP_BUCKETS; i++) { tempHist[i] = INT16_MIN; ambHist[i] = INT16_MIN; }
+  for (int i = 0; i < TEMP_BUCKETS; i++) {
+    tempHist[i] = INT16_MIN; ambHist[i] = INT16_MIN; pwrHist[i] = INT16_MIN;
+  }
   Serial.printf("temp sensor: %.1f C\n", temperatureRead());
   tempHourStart = millis();
   tempLastSample = millis();
@@ -820,6 +858,15 @@ void canTask(void *) {
 void tempTick() {
   if (!tempOK) return;
   uint32_t now = millis();
+  // 30-minute power ring, on its own cadence so it fills quickly after boot.
+  if ((uint32_t)(now - pw30At) >= PW30_MS) {
+    pw30At = now;
+    if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {
+      pw30[pw30Head] = (int16_t)(battV * battA);
+      pw30Head = (pw30Head + 1) % PW30_N;
+      if (pw30Fill < PW30_N) pw30Fill++;
+    }
+  }
   if ((uint32_t)(now - tempLastSample) >= TEMP_SAMPLE_MS) {
     tempLastSample = now;
     float c = temperatureRead();          // °C, ESP32-S3 internal die sensor
@@ -832,6 +879,11 @@ void tempTick() {
     if (seenAmb && (uint32_t)(now - ambAt) < 30000UL) {
       ambAcc += ambC;
       ambCnt++;
+    }
+    // Only while the battery data is fresh -- same reasoning as ambient.
+    if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {
+      pwrAcc += battV * battA;
+      pwrCnt++;
     }
   }
   if ((uint32_t)(now - tempHourStart) >= 3600000UL) {
@@ -847,6 +899,11 @@ void tempTick() {
         (ambCnt >= TEMP_MIN_VALID) ? (int16_t)(ambAcc / ambCnt * 10.0f)
                                    : INT16_MIN;
     ambAcc = 0; ambCnt = 0;
+    for (int i = 0; i < TEMP_BUCKETS - 1; i++) pwrHist[i] = pwrHist[i + 1];
+    pwrHist[TEMP_BUCKETS - 1] =
+        (pwrCnt >= TEMP_MIN_VALID) ? (int16_t)(pwrAcc / pwrCnt)
+                                   : INT16_MIN;
+    pwrAcc = 0; pwrCnt = 0;
     if (tempFilled < TEMP_BUCKETS) tempFilled++;
   }
 }

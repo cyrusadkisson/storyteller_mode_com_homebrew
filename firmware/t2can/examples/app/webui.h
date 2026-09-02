@@ -29,7 +29,7 @@ button.sel{background:#46535f}
 button:active{opacity:.8}button:disabled{opacity:.45}
 .big{font-size:26px;font-weight:600}
 .bl{padding:2px 2px;color:var(--mut)}
-#drawline,#lifeline,#invline{white-space:pre}
+#drawline,#remline,#invline{white-space:pre}
 .mut{color:var(--mut)}input[type=range]{width:100%}
 .bar{display:inline-block;width:84px;height:12px;background:#0d1117;border-radius:6px;overflow:hidden;vertical-align:middle;margin-left:8px}
 .bar>div{height:100%;background:var(--ac)}
@@ -45,6 +45,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .dimtbl td.nm{white-space:nowrap}
 .dimtbl td.bt{width:74px}
 .dimtbl button{width:100%;min-width:0;padding:9px 6px;font-size:14px}
+.qual{font-size:11px;color:#77838f}
 .ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px}
 .ro{font-size:15px;color:var(--mut);display:inline-block;line-height:1.2}
 .dimtbl input[type=range]{width:100%;margin:0;vertical-align:middle}
@@ -58,8 +59,10 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <h2>Battery</h2><div class="card">
 <div class="row"><span class="name">SoC:</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
-<div class="row"><span>Power flow:</span>
-<span><span id="drawline">--</span><span id="lifeline"></span></span></div>
+<div class="row"><span>Power flow:</span><span id="drawline">--</span></div>
+<div class="row" id="pwrsumrow" style="display:none"><span class="name sub" id="pwrsum"></span></div>
+<div id="pwrchart" style="overflow-x:auto"></div>
+<div class="row"><span>Time extrap:</span><span id="remline">--</span></div>
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches</h2><div class="card">
@@ -399,7 +402,26 @@ async function poll(){
     document.getElementById("batt").textContent=j.batt||"";
     document.getElementById("drawline").textContent=j.drawline||"--";
     document.getElementById("socpct").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
-    document.getElementById("lifeline").textContent=j.lifeline||"";
+    // Two extrapolations: the instantaneous one, which swings as the
+    // compressor and heater cycle, and a 30-minute mean that rides through it.
+    {
+      // Plain hours rather than d/h -- shorter, and the qualifiers matter more
+      // than the precision. Qualifiers are set smaller and muted so the
+      // numbers read first.
+      const q=t=>'<span class="qual">('+t+')</span>';
+      // Past 999h is not a real estimate -- at that draw the arithmetic is
+      // dominated by noise around zero current. Flag it rather than print it.
+      const hrs=h=>h>999?"fault":h.toFixed(1)+"h";
+      let parts=[];
+      if(j.lifeline){
+        const m=j.lifeline.match(/(\d+)d\s*(\d+)h/);
+        if(m) parts.push(hrs(+m[1]*24 + +m[2])+" "+q("immed. flow"));
+      }
+      // Show "?h" until the full 30-minute window has actually filled, rather
+      // than a number derived from a partial one.
+      parts.push((j.rem30!=null?hrs(j.rem30/60):"?h")+" "+q("past 30m"));
+      document.getElementById("remline").innerHTML=parts.join("  •  ")||"--";
+    }
     document.getElementById("socbar").style.width=(j.soc!=null?j.soc:0)+"%";
     // Battery-compartment fans: report the commanded level, not current.
     const gf=document.getElementById("gfan");
@@ -488,6 +510,7 @@ async function poll(){
     // Pack summary, then the bus counters. CAN2's age is the one that matters:
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
+    if(j.pwrhist) drawPower(j.pwrhist, j.tempfill||0, j.tempdays);
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null, null,
       "Board temp chart will appear here as data becomes available (15m).");
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart", "ambsum",
@@ -495,6 +518,67 @@ async function poll(){
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
+}
+
+// --- power flow chart ---------------------------------------------------------------
+// Same buckets as the temperature charts, but signed: a draw is negative and a
+// surplus positive, so bars grow from a zero baseline rather than the floor.
+// Scale snaps to a round step and always includes zero.
+function drawPower(hist, fill, days){
+  if(!hist||!hist.length)return;
+  const DAYS=days||Math.round((hist.length-1)/24);
+  const box=document.getElementById("pwrchart");
+  const vals=hist.filter(v=>v!=null);
+  if(!vals.length){
+    box.innerHTML='<div class="ph">Power flow chart will appear here as data '+
+                  'becomes available (15m).</div>';
+    document.getElementById("pwrsumrow").style.display="none";
+    return;
+  }
+  const W=510,H=118,PAD=18,YW=38,YR=38,TOP=8;
+  const dlo=Math.min.apply(null,vals), dhi=Math.max.apply(null,vals);
+  // round outward to a sensible step, and always show zero
+  const span=Math.max(Math.abs(dlo),Math.abs(dhi),50);
+  const step=span>800?250:span>300?100:span>150?50:25;
+  let lo=Math.min(0,Math.floor(dlo/step)*step);
+  let hi=Math.max(0,Math.ceil(dhi/step)*step);
+  if(hi===lo) hi=lo+step;
+  const PW=W-YW-YR, bw=PW/hist.length;
+  const yOf=v=>H-PAD-(v-lo)/(hi-lo)*(H-PAD-TOP);
+  const zero=yOf(0);
+  let grid="";
+  for(let v=lo;v<=hi+0.5;v+=step){
+    const y=yOf(v);
+    grid+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
+          `stroke="${v===0?"#4a5560":"#2a3440"}" stroke-width="${v===0?1.5:1}"/>`;
+    grid+=`<text x="0" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">${v}W</text>`;
+    grid+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">${v}W</text>`;
+  }
+  let bars="";
+  hist.forEach((v,i)=>{
+    if(v==null)return;
+    const y=yOf(v), top=Math.min(y,zero), h=Math.max(1,Math.abs(zero-y));
+    bars+=`<rect x="${(YW+i*bw).toFixed(2)}" y="${top.toFixed(2)}" `+
+          `width="${Math.max(1,bw).toFixed(2)}" height="${h.toFixed(2)}" `+
+          `fill="${v<0?"#c0623b":"var(--on)"}"/>`;
+  });
+  let axis="";
+  for(let d=0;d<=DAYS;d++){
+    const x=YW+(d*24)*bw;
+    axis+=`<line x1="${x.toFixed(1)}" y1="${TOP}" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
+          `stroke="#2a3440" stroke-width="1"/>`;
+    const lbl=d===DAYS?"now":("-"+(DAYS-d)+"d");
+    const anc=d===DAYS?'text-anchor="end"':'';
+    const lx=d===DAYS?x-2:x+2;
+    axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
+  }
+  const wasRight = box.scrollWidth - box.clientWidth - box.scrollLeft < 4;
+  box.innerHTML=`<svg width="${W}" height="${H}" style="min-width:${W}px">${grid}${axis}${bars}</svg>`;
+  if(wasRight||box._first===undefined){box.scrollLeft=box.scrollWidth;box._first=1;}
+  document.getElementById("pwrsum").textContent=
+    `${dlo.toFixed(0)} to ${dhi.toFixed(0)}W over `+
+    `${fill<hist.length?fill+"h so far":DAYS+" days"}`;
+  document.getElementById("pwrsumrow").style.display="flex";
 }
 
 // --- board temperature chart ------------------------------------------------------
