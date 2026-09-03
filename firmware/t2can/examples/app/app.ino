@@ -72,7 +72,9 @@ static const char *MDNS_NAME = "van";         // http://van.local
 
 // ----- board temperature history --------------------------------------------
 // The ESP32-S3 has no RTC and millis() resets on every boot, so history is
-// RELATIVE: TEMP_DAYS*24 completed hourly buckets plus the hour in progress.
+// RELATIVE: TEMP_HOURS of history in 15-minute buckets (4 per hour), plus the
+// bucket in progress = TEMP_HOURS*4+1 bars. A 15-min bucket needs >=15 of its
+// 30 possible samples to count.
 // Kept in RAM (~500 bytes) rather than flash -- the board is on permanent DC
 // and only loses power on a full system shutdown, where losing history is
 // acceptable and the alternative is thousands of flash write cycles.
@@ -80,10 +82,11 @@ static const char *MDNS_NAME = "van";         // http://van.local
 // This reads the DIE, not the cavity: it runs above ambient by the chip's own
 // dissipation plus the WiFi radio. Absolute accuracy is a few degrees; the
 // useful signal is the shape over a day.
-#define TEMP_DAYS      5            // history span; UI derives its axis from this
-#define TEMP_BUCKETS   (TEMP_DAYS * 24 + 1)   // whole hours + the current one
+#define TEMP_HOURS     48           // history span; UI derives its axis from this
+#define TEMP_BARS_HOUR 4            // 15-minute buckets
+#define TEMP_BUCKETS   (TEMP_HOURS * TEMP_BARS_HOUR + 1)   // + the one in progress
 #define TEMP_SAMPLE_MS 30000        // one reading per 30 s
-#define TEMP_MIN_VALID 30           // >=15 min of samples or the hour is void
+#define TEMP_MIN_VALID 15           // >=7.5 min of samples or the bucket is void
 static bool     tempOK = true;   // Arduino's temperatureRead() needs no setup
 static int16_t  tempHist[TEMP_BUCKETS];   // tenths of °C; INT16_MIN = no data
 static float    tempAcc = 0;              // current hour accumulator
@@ -112,6 +115,13 @@ static int16_t  pwrwin[PWRWIN_N];
 static uint16_t pwHead = 0, pwFill = 0;
 static uint32_t pwAt = 0;
 static uint32_t tempLastSample = 0;
+// Die over 85 C (185 F) sustained for an hour latches a warning that survives
+// until the user dismisses it (client-side, keyed on hotAt). hotAt is the
+// board-millis moment the hour threshold was crossed; a later excursion that
+// again crosses one hour updates it, un-acking the warning.
+static uint32_t hotStreakStart = 0;
+static uint16_t hotStreakCnt = 0;
+static uint32_t hotAt = 0;                 // 0 = never latched
 static uint32_t tempHourStart = 0;
 static uint16_t tempFilled = 0;           // buckets rotated so far
 
@@ -669,8 +679,11 @@ void sendState() {
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%d", i ? "," : "", v);
     }
-    J("],\"tempnow\":%.1f,\"tempfill\":%u,\"tempdays\":%d,",
-      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_DAYS);
+    J("],\"tempnow\":%.1f,\"tempfill\":%u,\"temphours\":%d,",
+      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_HOURS);
+    if (hotAt)
+      J("\"hotat\":%lu,\"hotago\":%lu,",
+        (unsigned long)hotAt, (unsigned long)((millis() - hotAt) / 1000));
     // Mean power over the last 30 minutes, and the minutes remaining it
     // implies. Needs a few minutes of samples before it means anything.
     // Window grows 15m -> 1h; the UI derives the label from pwrwinN.
@@ -901,6 +914,11 @@ void tempTick() {
       tempAcc += c;
       tempCnt++;
     }
+    if (c > 85.0f) {                      // >185 F: streak in 30 s samples
+      if (hotStreakCnt == 0) hotStreakStart = now;
+      hotStreakCnt++;
+      if (hotStreakCnt == 120) hotAt = millis();   // one hour: latch/update
+    } else hotStreakCnt = 0;
     // Only sample ambient while the reading is fresh; a stale value would
     // otherwise be averaged in as though the cabin were still being measured.
     if (seenAmb && (uint32_t)(now - ambAt) < 30000UL) {
@@ -913,8 +931,8 @@ void tempTick() {
       pwrCnt++;
     }
   }
-  if ((uint32_t)(now - tempHourStart) >= 3600000UL) {
-    tempHourStart += 3600000UL;
+  if ((uint32_t)(now - tempHourStart) >= 900000UL) {   // 15-minute buckets
+    tempHourStart += 900000UL;
     // Shift the ring left; the newest completed hour lands at the end.
     for (int i = 0; i < TEMP_BUCKETS - 1; i++) tempHist[i] = tempHist[i + 1];
     tempHist[TEMP_BUCKETS - 1] =

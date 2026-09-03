@@ -118,6 +118,10 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 
 <h2>Phone app board temp (ok up to 185&deg;F)</h2><div class="card">
 <div id="tempchart" style="overflow-x:auto"></div>
+<div class="row" id="hotwarnrow" style="display:none">
+<span class="warn" style="flex:1;margin:0" id="hotwarn"></span>
+<button id="hotdismiss" style="min-width:0;padding:6px 12px;font-size:13px">dismiss</button>
+</div>
 </div>
 
 <div id="foot"></div>
@@ -551,7 +555,7 @@ async function poll(){
     // Pack summary, then the bus counters. CAN2's age is the one that matters:
     // the battery readings above are suppressed when it goes stale, and this
     // says how long it has been quiet.
-    if(j.pwrhist) drawPower(j.pwrhist, j.tempfill||0, j.tempdays);
+    if(j.pwrhist) drawPower(j.pwrhist, j.tempfill||0, j.temphours);
     // CAN1 liveness: the head unit re-asserts PDM levels at ~91 Hz, so silence
     // means the bus is gone, not that nothing changed. Say so rather than
     // leaving stale switch states looking actionable.
@@ -562,8 +566,21 @@ async function poll(){
       const cc=document.getElementById("climcard");
       if(cc) cc.className=live?"card":"card stale";
     }
-    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays);
-    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart");
+    // Heat warning: latched in firmware until a NEW excursion updates it.
+    // Dismiss keys on the excursion's identity (hotat), so a dismissal hides
+    // this event but a fresh one re-shows it.
+    {
+      const row=document.getElementById("hotwarnrow");
+      window.hotSeenAt=j.hotat||0;
+      if(j.hotat&&j.hotat!==window.hotDismissed){
+        const ago=j.hotago||0, d=Math.floor(ago/86400), h=Math.floor((ago%86400)/3600);
+        document.getElementById("hotwarn").textContent=
+          `Warning: Board was >185°F for more than an hour ${d}d ${h}h ago`;
+        row.style.display="flex";
+      } else row.style.display="none";
+    }
+    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
+    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
@@ -599,7 +616,7 @@ function drawPower(hist, fill, days){
                   'available (15m)</div>';
     return;
   }
-  const H=118,PAD=18,YW=6,YR=38,TOP=8;
+  const H=118,PAD=18,YW=14,YR=38,TOP=8;
   const W=Math.max(300,Math.floor(box.clientWidth)||480);
   // FIXED scale, owner call: a resizing axis made people misread the shape.
   const lo=-2200, hi=2200;
@@ -622,15 +639,17 @@ function drawPower(hist, fill, days){
           `width="${Math.max(1,bw).toFixed(2)}" height="${h.toFixed(2)}" `+
           `fill="${v<0?"#c0623b":"var(--on)"}"/>`;
   });
+  // Gridlines measured from "now" at the RIGHT EDGE of the newest bar, so the
+  // newest bar sits INSIDE the now line. Labels centered under their lines.
   let axis="";
-  for(let d=0;d<=DAYS;d++){
-    const x=YW+(d*24)*bw;
+  const N=hist.length, DIV=48;                 // 48 bars = 12 h
+  for(let k=0;k*DIV<N;k++){
+    const x=YW+(N-k*DIV)*bw;
     axis+=`<line x1="${x.toFixed(1)}" y1="${TOP}" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
           `stroke="#2a3440" stroke-width="1"/>`;
-    const lbl=d===DAYS?"now":("-"+(DAYS-d)+"d");
-    const anc=d===DAYS?'text-anchor="end"':'';
-    const lx=d===DAYS?x-2:x+2;
-    axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
+    const lbl=k===0?"now":("-"+(k*12)+"h");
+    axis+=`<text x="${x.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" `+
+          `text-anchor="middle">${lbl}</text>`;
   }
   box.innerHTML=`<svg width="${W}" height="${H}" style="max-width:100%">${grid}${axis}${bars}</svg>`;
   // Summary line removed by owner.
@@ -647,7 +666,7 @@ function drawTemp(hist, fill, days, elId){
   // YW/YR: label gutters. The chart scrolls horizontally, so the axis is
   // repeated on the right -- otherwise reading a value means scrolling five
   // days back to find the scale.
-  const H=118,PAD=18,YW=6,YR=34,TOP=8;
+  const H=118,PAD=18,YW=14,YR=34,TOP=8;
   const box=document.getElementById(elId||"tempchart");
   const W=Math.max(300,Math.floor(box.clientWidth)||480);   // fit the card
   const vals=hist.filter(v=>v!=null);
@@ -693,17 +712,17 @@ function drawTemp(hist, fill, days, elId){
     yaxis+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
            `${fmtTick(v)}°</text>`;
   });
-  // day gridlines + labels, oldest at the left through to now
+  // Gridlines measured from "now" at the RIGHT EDGE of the newest bar, so the
+  // newest bar sits INSIDE the now line. Labels centered under their lines.
   let axis="";
-  for(let d=0;d<=DAYS;d++){
-    const x=YW+(d*24)*bw;
+  const N=hist.length, DIV=48;                 // 48 bars = 12 h
+  for(let k=0;k*DIV<N;k++){
+    const x=YW+(N-k*DIV)*bw;
     axis+=`<line x1="${x.toFixed(1)}" y1="${TOP}" x2="${x.toFixed(1)}" y2="${H-PAD}" `+
           `stroke="#2a3440" stroke-width="1"/>`;
-    const lbl=d===DAYS?"now":("-"+(DAYS-d)+"d");
-    // The last label sits on the right edge, so anchor it inward or it clips.
-    const anc=d===DAYS?'text-anchor="end"':'';
-    const lx=d===DAYS?x-2:x+2;
-    axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
+    const lbl=k===0?"now":("-"+(k*12)+"h");
+    axis+=`<text x="${x.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" `+
+          `text-anchor="middle">${lbl}</text>`;
   }
   // Keep the newest data in view if it ever does overflow. The chart is wider than a phone screen, and
   // with only a few hours of history everything sits at the right-hand edge --
@@ -738,6 +757,10 @@ document.querySelectorAll('input[type=range]').forEach(el=>{
   el.addEventListener("touchend",up,{passive:true});
   el.addEventListener("blur",up);
 });
+document.getElementById("hotdismiss").onclick=()=>{
+  window.hotDismissed=window.hotSeenAt||0;
+  poll();
+};
 document.getElementById("vradj").onclick=()=>setSliderArm(!vrArmed());
 setInterval(()=>{ paintSlider(); },500);
 document.getElementById("coolup").onclick=()=>stepCool(1);
