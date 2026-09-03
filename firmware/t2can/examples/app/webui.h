@@ -62,17 +62,16 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row"><span class="name">State of charge:</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
 <div class="row"><span>Power flow:</span><span id="drawline">--</span></div>
-<div class="row" id="pwrsumrow" style="display:none"><span class="name sub" id="pwrsum"></span></div>
 <div id="pwrchart" style="overflow-x:auto"></div>
-<div class="row"><span>Time extrap:</span><span id="remline">--</span></div>
+<div class="row"><span>&#x231B;:</span>
+<span style="flex:1;text-align:right" id="remline">--</span></div>
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches</h2><div class="card">
 <div id="can1warn" class="warn" style="display:none">Control bus not responding — states below are last known, and controls will not take effect.</div>
 <table class="dimtbl"><tbody id="switches"></tbody></table></div>
 
-<h2 style="display:flex;justify-content:space-between;align-items:baseline">Climate
-<span id="tempin" style="text-transform:none;letter-spacing:0;color:var(--tx)">--</span></h2>
+<h2>Climate</h2>
 <div class="card" id="climcard">
 <div class="row" id="acgate" style="display:none"><span class="sub">needs the inverter or shore power &mdash; the overhead unit runs on AC</span></div>
 <div class="row"><span class="name">Roof A/C</span>
@@ -83,7 +82,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <span><button id="cf0">Auto</button> <button id="cf1">Low</button> <button id="cf2">High</button></span></div>
 <div class="row sub2"><span class="name">Cool setpoint</span>
 <span><button id="cooldn">&minus;</button> <b id="coolsp">--</b> <button id="coolup">+</button></span></div>
-<div class="row sub2" id="ambsumrow" style="display:none"><span class="name sub" id="ambsum"></span></div>
+<div class="row sub2"><span class="name">Cabin temp</span><b id="tempin">--</b></div>
 <div id="ambchart" style="overflow-x:auto"></div>
 </div>
 
@@ -95,7 +94,8 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row"><span class="name">Fan airflow</span>
 <span class="sw2" id="fdir"><span class="lbl">Out</span><span class="lbl">In</span><span class="knob" id="fknob">Out</span></span></div>
 <div class="row"><span class="name">Fan speed</span><b id="sppct">--</b></div>
-<div class="row"><input type="range" id="vrange" min="0" max="200" value="0"></div>
+<div class="row"><button id="vradj" style="min-width:0;padding:6px 12px;font-size:13px">enable slider</button>
+<input type="range" id="vrange" min="0" max="200" value="0" disabled style="flex:1"></div>
 </div>
 
 <h2>Power</h2><div class="card">
@@ -116,8 +116,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
-<h2>Phone app integration board temp</h2><div class="card">
-<div class="row" id="tempsumrow" style="display:none"><span class="name sub" id="tempsum"></span></div>
+<h2>Phone app board temp (ok up to 185&deg;F)</h2><div class="card">
 <div id="tempchart" style="overflow-x:auto"></div>
 </div>
 
@@ -303,7 +302,6 @@ function paintFan(){
   d.className="sw2"+(fanDir?" in":"");
   d.style.opacity=locked?"0.45":"";    // airflow stays usable with the lid shut
   document.getElementById("fknob").textContent=fanDir?"In":"Out";
-  document.getElementById("vrange").disabled=locked;
   document.getElementById("fannote").textContent=
     shut ? "· open vent to enable fan"
          : (locked ? "· temporarily stopping for airflow change" : "");
@@ -312,6 +310,28 @@ function paintFan(){
 // speed 0 while it does. Rather than decode that transient off the wire,
 // lock the fan controls for 10 s and say plainly what is happening.
 function fanLocked(){return Date.now()<fanLockUntil;}
+// The speed slider sits disabled so a swipe across the page cannot drag it;
+// "adjust" arms it for 60 s of inactivity, then it locks again. Any slider
+// activity pushes the deadline out.
+let vrArmUntil=0;
+const VR_ARM_MS=60000;
+function vrArmed(){return Date.now()<vrArmUntil;}
+function setSliderArm(on){
+  if(on) vrArmUntil=Date.now()+VR_ARM_MS; else vrArmUntil=0;
+  paintSlider();
+}
+// Single owner of the slider's disabled state. paintFan used to set it too,
+// and the two fought: paintFan re-enabled the slider while the arm tick
+// re-disabled it, so the control blinked. Disabled = not armed OR airflow-
+// change lockout.
+function paintSlider(){
+  // Exactly as specified: the button always reads "enable slider"; it is
+  // disabled while the slider is armed, and re-enabled when the 60 s lapses.
+  const armed=vrArmed()&&!fanLocked();
+  vr.disabled=!armed;
+  document.getElementById("vradj").disabled=armed;
+}
+function touchSliderArm(){ if(vrArmed()) setSliderArm(true); }
 function setFanLock(){
   fanLockUntil=Date.now()+13000;
   if(fanHold<fanLockUntil) fanHold=fanLockUntil;   // never shorten the lock
@@ -356,7 +376,8 @@ function sendVentSpeed(){
   cmd("vent&speed="+v);
 }
 vr.oninput=()=>{
-  if(fanLocked())return;
+  if(fanLocked()||!vrArmed())return;
+  touchSliderArm();
   ventPend=parseInt(vr.value,10)||0;
   document.getElementById("sppct").textContent=Math.round(ventPend/2)+"%";
   const now=Date.now();
@@ -364,7 +385,8 @@ vr.oninput=()=>{
 };
 ["change","pointerup","touchend","mouseup","keyup"].forEach(ev=>
   vr.addEventListener(ev,()=>{
-    if(fanLocked())return;
+    if(fanLocked()||!vrArmed())return;
+    touchSliderArm();
     ventPend=parseInt(vr.value,10)||ventPend;
     vr._last=Date.now();
     sendVentSpeed();
@@ -416,21 +438,23 @@ async function poll(){
       // dominated by noise around zero current. Flag it rather than print it.
       const hrs=h=>h>999?"fault":h.toFixed(1)+"h";
       let parts=[];
-      if(j.lifeline){
-        const m=j.lifeline.match(/(\d+)d\s*(\d+)h/);
-        if(m) parts.push(hrs(+m[1]*24 + +m[2])+" "+q("immed. flow"));
-      }
-      // Show "?h" until the full 30-minute window has actually filled, rather
-      // than a number derived from a partial one.
+      // The immediate figure must ALWAYS render: number, "fault", or
+      // "charging" -- never absent, even at near-zero draw.
+      const m=j.lifeline?j.lifeline.match(/(\d+)d\s*(\d+)h/):null;
+      parts.push((m?hrs(+m[1]*24 + +m[2]):
+                 (j.lifeline&&j.lifeline.indexOf("charging")>=0?"charging":"?h"))
+                +" "+q("immediate flow"));
+      // "?h" until the full 30-minute window has actually filled, rather than
+      // a number derived from a partial one.
       parts.push((j.rem30!=null?hrs(j.rem30/60):"?h")+" "+q("past 30m"));
-      document.getElementById("remline").innerHTML=parts.join("  •  ")||"--";
+      document.getElementById("remline").innerHTML=parts.join(" &nbsp; ")||"--";
     }
     document.getElementById("socbar").style.width=(j.soc!=null?j.soc:0)+"%";
     // Battery-compartment fans: report the commanded level, not current.
     const gf=document.getElementById("gfan");
     if(gf) gf.textContent=(j.gfan==null||j.gfan<0)?"--":(j.gfan>0?"on, auto":"off, auto");
     document.getElementById("tempin").textContent=
-      j.tempin!=null?(j.tempin.toFixed(0)+"°F inside"):"";
+      j.tempin!=null?j.tempin.toFixed(0)+"°F":"--";
     if(j.lights) LIGHTS.forEach((n,i)=>{
       const L=j.lights[i];
       if(Date.now()>=lHold[i]&&L.on!==lOn[i]){lOn[i]=L.on;paintLight(i);}
@@ -478,7 +502,7 @@ async function poll(){
       if(j.vdir!=null) fanDir=j.vdir?1:0;
       paintFan();
     }
-    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()){
+    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()&&vrArmed()){
       // The slider shows the SETPOINT, which persists across fan-off and
       // lid-close. While the panel still owns the vent (vown=0) the firmware
       // adopts the observed speed into vset, so this shows reality on a
@@ -524,9 +548,9 @@ async function poll(){
       const cc=document.getElementById("climcard");
       if(cc) cc.className=live?"card":"card stale";
     }
-    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null, null,
+    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null,
       "Board temp chart will appear here as data becomes available (15m).");
-    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart", "ambsum",
+    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart",
       "Internal temp chart will appear here as data becomes available (15m).");
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
@@ -545,10 +569,10 @@ function drawPower(hist, fill, days){
   if(!vals.length){
     box.innerHTML='<div class="ph">Power flow chart will appear here as data '+
                   'becomes available (15m).</div>';
-    document.getElementById("pwrsumrow").style.display="none";
     return;
   }
-  const W=510,H=118,PAD=18,YW=38,YR=38,TOP=8;
+  const H=118,PAD=18,YW=38,YR=38,TOP=8;
+  const W=Math.max(300,Math.floor(box.clientWidth)||480);
   const dlo=Math.min.apply(null,vals), dhi=Math.max.apply(null,vals);
   // round outward to a sensible step, and always show zero
   const span=Math.max(Math.abs(dlo),Math.abs(dhi),50);
@@ -585,13 +609,8 @@ function drawPower(hist, fill, days){
     const lx=d===DAYS?x-2:x+2;
     axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
   }
-  const wasRight = box.scrollWidth - box.clientWidth - box.scrollLeft < 4;
-  box.innerHTML=`<svg width="${W}" height="${H}" style="min-width:${W}px">${grid}${axis}${bars}</svg>`;
-  if(wasRight||box._first===undefined){box.scrollLeft=box.scrollWidth;box._first=1;}
-  document.getElementById("pwrsum").textContent=
-    `${dlo.toFixed(0)} to ${dhi.toFixed(0)}W over `+
-    `${fill<hist.length?fill+"h so far":DAYS+" days"}`;
-  document.getElementById("pwrsumrow").style.display="flex";
+  box.innerHTML=`<svg width="${W}" height="${H}" style="max-width:100%">${grid}${axis}${bars}</svg>`;
+  // Summary line removed by owner.
 }
 
 // --- board temperature chart ------------------------------------------------------
@@ -599,18 +618,19 @@ function drawPower(hist, fill, days){
 // has no calendar -- millis() resets on boot -- so the axis is relative,
 // "-Nd" through to "now". Hours with too little data arrive as null and are drawn as gaps, not
 // interpolated across.
-function drawTemp(hist, fill, days, elId, sumId, ph){
+function drawTemp(hist, fill, days, elId, ph){
   if(!hist||!hist.length)return;
   const DAYS=days||Math.round((hist.length-1)/24);   // derived, never hardcoded
   // YW/YR: label gutters. The chart scrolls horizontally, so the axis is
   // repeated on the right -- otherwise reading a value means scrolling five
   // days back to find the scale.
-  const W=510,H=118,PAD=18,YW=30,YR=30,TOP=8;
+  const H=118,PAD=18,YW=30,YR=30,TOP=8;
+  const box=document.getElementById(elId||"tempchart");
+  const W=Math.max(300,Math.floor(box.clientWidth)||480);   // fit the card
   const vals=hist.filter(v=>v!=null);
   if(!vals.length){
     document.getElementById(elId||"tempchart").innerHTML=
       '<div class="ph">'+(ph||"Chart will appear here as data becomes available (15m).")+'</div>';
-    document.getElementById((sumId||"tempsum")+"row").style.display="none";
     return;
   }
   // Keep the real data range for the summary, and scale the axis to the tens
@@ -673,20 +693,13 @@ function drawTemp(hist, fill, days, elId, sumId, ph){
     const lx=d===DAYS?x-2:x+2;
     axis+=`<text x="${lx.toFixed(1)}" y="${H-6}" fill="#8b98a5" font-size="10" ${anc}>${lbl}</text>`;
   }
-  const box=document.getElementById(elId||"tempchart");
-  // Keep the newest data in view. The chart is wider than a phone screen, and
+  // Keep the newest data in view if it ever does overflow. The chart is wider than a phone screen, and
   // with only a few hours of history everything sits at the right-hand edge --
   // which looked blank until you scrolled. Anchor right, and leave the user
   // scrolled where they put it if they have gone looking at older data.
-  const wasRight = box.scrollWidth - box.clientWidth - box.scrollLeft < 4;
   box.innerHTML=
-    `<svg width="${W}" height="${H}" style="min-width:${W}px">${yaxis}${axis}${bars}</svg>`;
-  if(wasRight||box._first===undefined){box.scrollLeft=box.scrollWidth;box._first=1;}
-  const sid=sumId||"tempsum";
-  document.getElementById(sid).textContent=
-    `${dlo.toFixed(0)}–${dhi.toFixed(0)}°F over `+
-    `${fill<hist.length?fill+"h so far":DAYS+" days"}`;
-  document.getElementById(sid+"row").style.display="flex";
+    `<svg width="${W}" height="${H}" style="max-width:100%">${yaxis}${axis}${bars}</svg>`;
+  // Summary line removed by owner: the chart carries the information.
 }
 
 // --- remaining buttons ------------------------------------------------------------------
@@ -713,6 +726,8 @@ document.querySelectorAll('input[type=range]').forEach(el=>{
   el.addEventListener("touchend",up,{passive:true});
   el.addEventListener("blur",up);
 });
+document.getElementById("vradj").onclick=()=>setSliderArm(!vrArmed());
+setInterval(()=>{ paintSlider(); },500);
 document.getElementById("coolup").onclick=()=>stepCool(1);
 document.getElementById("cooldn").onclick=()=>stepCool(-1);
 for(let i=0;i<4;i++)paintLight(i); for(let i=0;i<3;i++)paint(i);

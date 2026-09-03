@@ -80,7 +80,7 @@ static const char *MDNS_NAME = "van";         // http://van.local
 // This reads the DIE, not the cavity: it runs above ambient by the chip's own
 // dissipation plus the WiFi radio. Absolute accuracy is a few degrees; the
 // useful signal is the shape over a day.
-#define TEMP_DAYS      7            // history span; UI derives its axis from this
+#define TEMP_DAYS      5            // history span; UI derives its axis from this
 #define TEMP_BUCKETS   (TEMP_DAYS * 24 + 1)   // whole hours + the current one
 #define TEMP_SAMPLE_MS 30000        // one reading per 30 s
 #define TEMP_MIN_VALID 30           // >=15 min of samples or the hour is void
@@ -505,11 +505,11 @@ void onCanBFrame(const twai_message_t &m) {
 }
 
 // ----- JSON state ----------------------------------------------------------------
-// Three 169-bucket histories dominate this buffer: temps are ~5 chars each and
-// power can be 6 ("-1037,"), so worst case is ~4.9 KB before the rest of the
+// Three 121-bucket histories dominate this buffer: temps are ~5 chars each and
+// power can be 6 ("-1037,"), so worst case is ~3.7 KB before the rest of the
 // state. The J() macro truncates silently once full, which would break the
 // whole response rather than just a chart -- so size it with real headroom.
-static char jbuf[7168];
+static char jbuf[5120];
 
 void sendState() {
   char *w = jbuf;
@@ -535,13 +535,17 @@ void sendState() {
     // at low draw, exactly when the answer is most reassuring. We have amp
     // hours and amps, so compute it rather than showing nothing. Charging has
     // no "time left" to report.
+    // ALWAYS emit something: the UI shows both extrapolations permanently, and
+    // a dead zone here (|A| below a threshold) made the immediate figure vanish
+    // exactly when the van was idling. Near-zero discharge produces a huge
+    // number, which the UI renders as "fault" per its >999h rule.
     uint32_t mins = 0;
     if (battMin != 0xFFFF && battMin > 0) mins = battMin;
-    else if (battA < -0.05f && battAh > 0) mins = (uint32_t)(battAh / -battA * 60.0f);
+    else if (battA < 0.0f && battAh > 0) mins = (uint32_t)(battAh / -battA * 60.0f);
     if (mins > 0)
       J("\"lifeline\":\"   \u2022   %02ud %02uh\",",
         (unsigned)(mins / 1440), (unsigned)((mins % 1440) / 60));
-    else if (battA > 0.05f)
+    else if (battA > 0.0f)
       J("\"lifeline\":\"   \u2022   charging\",");
     else
       J("\"lifeline\":\"\",");
