@@ -29,7 +29,7 @@ button.sel{background:#46535f}
 button:active{opacity:.8}button:disabled{opacity:.45}
 .big{font-size:26px;font-weight:600}
 .bl{padding:2px 2px;color:var(--mut)}
-#drawline,#remline,#invline{white-space:pre}
+#drawline,#invline{white-space:pre}
 .mut{color:var(--mut)}input[type=range]{width:100%}
 .bar{display:inline-block;width:84px;height:12px;background:#0d1117;border-radius:6px;overflow:hidden;vertical-align:middle;margin-left:8px}
 .bar>div{height:100%;background:var(--ac)}
@@ -48,7 +48,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .qual{font-size:11px;color:#77838f}
 .warn{font-size:13px;color:#e0a458;background:#2a2318;border-radius:8px;padding:8px;margin-bottom:6px}
 .stale{opacity:.45}
-.ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px}
+.ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px;text-align:center}
 .ro{font-size:15px;color:var(--mut);display:inline-block;line-height:1.2}
 .dimtbl input[type=range]{width:100%;margin:0;vertical-align:middle}
 .dimtbl tr.mst td{border-top:1px solid #2a3440;padding-top:9px}
@@ -59,12 +59,12 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
 <h2>Battery</h2><div class="card">
-<div class="row"><span class="name">State of charge:</span>
+<div class="row"><span class="name">State of charge</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
-<div class="row"><span>Power flow:</span><span id="drawline">--</span></div>
+<div class="row"><span>Power flow</span><span id="drawline">--</span></div>
 <div id="pwrchart" style="overflow-x:auto"></div>
-<div class="row"><span>&#x231B;:</span>
-<span style="flex:1;text-align:right" id="remline">--</span></div>
+<div class="row"><span>&#x231B; <span class="qual">(derived from current flow)</span></span><span id="remnow">--</span></div>
+<div class="row" id="remhalfrow" style="display:none"><span>&#x231B; <span class="qual" id="remlab">(derived from past 15m usage)</span></span><span id="remhalf">--</span></div>
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches</h2><div class="card">
@@ -82,7 +82,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <span><button id="cf0">Auto</button> <button id="cf1">Low</button> <button id="cf2">High</button></span></div>
 <div class="row sub2"><span class="name">Cool setpoint</span>
 <span><button id="cooldn">&minus;</button> <b id="coolsp">--</b> <button id="coolup">+</button></span></div>
-<div class="row sub2"><span class="name">Cabin temp</span><b id="tempin">--</b></div>
+<div class="row"><span class="name">Cabin temp</span><b id="tempin">--</b></div>
 <div id="ambchart" style="overflow-x:auto"></div>
 </div>
 
@@ -326,8 +326,10 @@ function setSliderArm(on){
 // change lockout.
 function paintSlider(){
   // Exactly as specified: the button always reads "enable slider"; it is
-  // disabled while the slider is armed, and re-enabled when the 60 s lapses.
-  const armed=vrArmed()&&!fanLocked();
+  // disabled while the slider is armed, and re-enabled when the arm lapses.
+  // Independent of the fan's run state and the airflow lockout -- the slider
+  // shows and sets the SETPOINT, which nothing transient may veto.
+  const armed=vrArmed();
   vr.disabled=!armed;
   const b=document.getElementById("vradj");
   b.disabled=armed;
@@ -378,7 +380,7 @@ function sendVentSpeed(){
   cmd("vent&speed="+v);
 }
 vr.oninput=()=>{
-  if(fanLocked()||!vrArmed())return;
+  if(!vrArmed())return;
   touchSliderArm();
   ventPend=parseInt(vr.value,10)||0;
   document.getElementById("sppct").textContent=Math.round(ventPend/2)+"%";
@@ -387,7 +389,7 @@ vr.oninput=()=>{
 };
 ["change","pointerup","touchend","mouseup","keyup"].forEach(ev=>
   vr.addEventListener(ev,()=>{
-    if(fanLocked()||!vrArmed())return;
+    if(!vrArmed())return;
     touchSliderArm();
     ventPend=parseInt(vr.value,10)||ventPend;
     vr._last=Date.now();
@@ -435,21 +437,31 @@ async function poll(){
       // Plain hours rather than d/h -- shorter, and the qualifiers matter more
       // than the precision. Qualifiers are set smaller and muted so the
       // numbers read first.
-      const q=t=>'<span class="qual">('+t+')</span>';
       // Past 999h is not a real estimate -- at that draw the arithmetic is
       // dominated by noise around zero current. Flag it rather than print it.
       const hrs=h=>h>999?"fault":h.toFixed(1)+"h";
-      let parts=[];
-      // The immediate figure must ALWAYS render: number, "fault", or
-      // "charging" -- never absent, even at near-zero draw.
+      // Each line renders unconditionally: a number, "fault", "charging",
+      // or "?h" when its window has not filled. Never absent.
       const m=j.lifeline?j.lifeline.match(/(\d+)d\s*(\d+)h/):null;
-      parts.push((m?hrs(+m[1]*24 + +m[2]):
-                 (j.lifeline&&j.lifeline.indexOf("charging")>=0?"charging":"?h"))
-                +" "+q("immediate flow"));
-      // "?h" until the full 30-minute window has actually filled, rather than
-      // a number derived from a partial one.
-      parts.push((j.rem30!=null?hrs(j.rem30/60):"?h")+" "+q("past 30m"));
-      document.getElementById("remline").innerHTML=parts.join(" &nbsp; ")||"--";
+      document.getElementById("remnow").textContent=
+        m?hrs(+m[1]*24 + +m[2]):
+        (j.lifeline&&j.lifeline.indexOf("charging")>=0?"charging":"?h");
+      // The window grows 15m -> 1h; label and value track it. The whole row
+      // stays hidden until 15 minutes of data exist -- showing a figure before
+      // that would be noise.
+      {
+        const row=document.getElementById("remhalfrow");
+        const n=j.pwrwinN||0;
+        const wmin=Math.min(60,Math.round(n*5/60));
+        if(j.remwin==null){
+          row.style.display="none";
+        }else{
+          document.getElementById("remlab").textContent=
+            "(derived from past "+wmin+"m usage)";
+          document.getElementById("remhalf").textContent=hrs(j.remwin/60);
+          row.style.display="flex";
+        }
+      }
     }
     document.getElementById("socbar").style.width=(j.soc!=null?j.soc:0)+"%";
     // Battery-compartment fans: report the commanded level, not current.
@@ -508,7 +520,7 @@ async function poll(){
     // current setpoint, armed or not. Gating this on vrArmed() (as shipped)
     // froze the position at the markup default of 0 whenever the slider was
     // locked -- showing 0 while the fan ran.
-    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()){
+    if(document.activeElement!==vr&&!vr._drag){
       if(j.vset!=null&&j.vset>0){
         fanSet=j.vset;
         vr.value=fanSet;
@@ -550,14 +562,28 @@ async function poll(){
       const cc=document.getElementById("climcard");
       if(cc) cc.className=live?"card":"card stale";
     }
-    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays, null,
-      "Board temp chart will appear here as data becomes available (15m).");
-    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart",
-      "Internal temp chart will appear here as data becomes available (15m).");
+    if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.tempdays);
+    if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.tempdays, "ambchart");
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
 }
+
+// 4-6 y-axis ticks anchored to sane values. Pick the coarsest step from a
+// ladder of human-friendly increments that still yields at least 4 ticks; the
+// first tick is the first step-multiple inside the range, so lines land on
+// round numbers (115, 120, 125...) rather than arbitrary fractions of the span.
+function niceTicks(lo,hi){
+  const span=hi-lo;
+  const steps=[0.5,1,2,2.5,5,10,20,25,50,100,200,250,500,1000,2000,2500,5000];
+  let step=steps[steps.length-1];
+  for(const s of steps){ if(span/s<=6){ step=s; break; } }
+  const t=[];
+  for(let v=Math.ceil(lo/step)*step; v<=hi+1e-9; v+=step)
+    t.push(Math.round(v*100)/100);
+  return t;
+}
+const fmtTick=v=>(Math.abs(v%1)>0.001?v.toFixed(1):v.toFixed(0));
 
 // --- power flow chart ---------------------------------------------------------------
 // Same buckets as the temperature charts, but signed: a draw is negative and a
@@ -569,30 +595,25 @@ function drawPower(hist, fill, days){
   const box=document.getElementById("pwrchart");
   const vals=hist.filter(v=>v!=null);
   if(!vals.length){
-    box.innerHTML='<div class="ph">Power flow chart will appear here as data '+
-                  'becomes available (15m).</div>';
+    box.innerHTML='<div class="ph">Chart will appear here as data becomes '+
+                  'available (15m)</div>';
     return;
   }
-  const H=118,PAD=18,YW=38,YR=38,TOP=8;
+  const H=118,PAD=18,YW=6,YR=38,TOP=8;
   const W=Math.max(300,Math.floor(box.clientWidth)||480);
+  // FIXED scale, owner call: a resizing axis made people misread the shape.
+  const lo=-2200, hi=2200;
   const dlo=Math.min.apply(null,vals), dhi=Math.max.apply(null,vals);
-  // round outward to a sensible step, and always show zero
-  const span=Math.max(Math.abs(dlo),Math.abs(dhi),50);
-  const step=span>800?250:span>300?100:span>150?50:25;
-  let lo=Math.min(0,Math.floor(dlo/step)*step);
-  let hi=Math.max(0,Math.ceil(dhi/step)*step);
-  if(hi===lo) hi=lo+step;
   const PW=W-YW-YR, bw=PW/hist.length;
   const yOf=v=>H-PAD-(v-lo)/(hi-lo)*(H-PAD-TOP);
   const zero=yOf(0);
   let grid="";
-  for(let v=lo;v<=hi+0.5;v+=step){
+  niceTicks(lo,hi).forEach(v=>{
     const y=yOf(v);
     grid+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
           `stroke="${v===0?"#4a5560":"#2a3440"}" stroke-width="${v===0?1.5:1}"/>`;
-    grid+=`<text x="0" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">${v}W</text>`;
-    grid+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">${v}W</text>`;
-  }
+    grid+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">${fmtTick(v)}W</text>`;
+  });
   let bars="";
   hist.forEach((v,i)=>{
     if(v==null)return;
@@ -620,19 +641,19 @@ function drawPower(hist, fill, days){
 // has no calendar -- millis() resets on boot -- so the axis is relative,
 // "-Nd" through to "now". Hours with too little data arrive as null and are drawn as gaps, not
 // interpolated across.
-function drawTemp(hist, fill, days, elId, ph){
+function drawTemp(hist, fill, days, elId){
   if(!hist||!hist.length)return;
   const DAYS=days||Math.round((hist.length-1)/24);   // derived, never hardcoded
   // YW/YR: label gutters. The chart scrolls horizontally, so the axis is
   // repeated on the right -- otherwise reading a value means scrolling five
   // days back to find the scale.
-  const H=118,PAD=18,YW=30,YR=30,TOP=8;
+  const H=118,PAD=18,YW=6,YR=34,TOP=8;
   const box=document.getElementById(elId||"tempchart");
   const W=Math.max(300,Math.floor(box.clientWidth)||480);   // fit the card
   const vals=hist.filter(v=>v!=null);
   if(!vals.length){
     document.getElementById(elId||"tempchart").innerHTML=
-      '<div class="ph">'+(ph||"Chart will appear here as data becomes available (15m).")+'</div>';
+      '<div class="ph">Chart will appear here as data becomes available (15m)</div>';
     return;
   }
   // Keep the real data range for the summary, and scale the axis to the tens
@@ -664,24 +685,13 @@ function drawTemp(hist, fill, days, elId, ph){
     yaxis+=`<text x="${YW+4}" y="${(y-3).toFixed(1)}" fill="#c0392b" font-size="10">`+
            `85°C max</text>`;
   }
-  // Minor gridlines every 5 F, unlabelled -- they give a finer reference
-  // without crowding the gutters with numbers.
-  for(let v=lo+5;v<hi;v+=10){
-    const y=H-PAD-(v-lo)/(hi-lo)*(H-PAD-TOP);
-    yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
-           `stroke="#222a33" stroke-width="1"/>`;
-  }
-  const ticks=[];
-  for(let v=lo;v<=hi+0.5;v+=10) ticks.push(v);
-  ticks.forEach(v=>{
+  niceTicks(lo,hi).forEach(v=>{
     const f=(v-lo)/(hi-lo);
     const y=H-PAD-f*(H-PAD-TOP);
     yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
            `stroke="#2a3440" stroke-width="1"/>`;
-    yaxis+=`<text x="0" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
-           `${v.toFixed(0)}°</text>`;
     yaxis+=`<text x="${W-YR+4}" y="${(y+3).toFixed(1)}" fill="#8b98a5" font-size="10">`+
-           `${v.toFixed(0)}°</text>`;
+           `${fmtTick(v)}°</text>`;
   });
   // day gridlines + labels, oldest at the left through to now
   let axis="";

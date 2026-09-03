@@ -100,14 +100,17 @@ static uint16_t ambCnt = 0;
 static int16_t  pwrHist[TEMP_BUCKETS];
 static float    pwrAcc = 0;
 static uint16_t pwrCnt = 0;
-// Separate 30-minute ring for the smoothed time-remaining figure. The hourly
-// buckets are too coarse: the compressor and heater cycle several times an
-// hour, which is exactly the swing being averaged out. 360 samples at 5 s.
-#define PW30_N      360
-#define PW30_MS     5000
-static int16_t  pw30[PW30_N];
-static uint16_t pw30Head = 0, pw30Fill = 0;
-static uint32_t pw30At = 0;
+// Rolling ring for the smoothed time-remaining figure. The hourly buckets are
+// too coarse: the compressor and heater cycle several times an hour, which is
+// exactly the swing being averaged out. The window GROWS: the figure appears
+// at 15 minutes and the window widens to its full hour as samples accrue.
+// 720 samples at 5 s = 1 h.
+#define PWRWIN_N      720
+#define PWRWIN_MS     5000
+#define PWRWIN_MIN_FILL 180          // 15 min before the figure means anything
+static int16_t  pwrwin[PWRWIN_N];
+static uint16_t pwHead = 0, pwFill = 0;
+static uint32_t pwAt = 0;
 static uint32_t tempLastSample = 0;
 static uint32_t tempHourStart = 0;
 static uint16_t tempFilled = 0;           // buckets rotated so far
@@ -670,21 +673,27 @@ void sendState() {
       temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_DAYS);
     // Mean power over the last 30 minutes, and the minutes remaining it
     // implies. Needs a few minutes of samples before it means anything.
-    J("\"pw30n\":%u,", pw30Fill);
-    if (pw30Fill >= PW30_N) {                  // only once the FULL 30 min is in
+    // Window grows 15m -> 1h; the UI derives the label from pwrwinN.
+    J("\"pwrwinN\":%u,", pwFill);
+    if (pwFill >= PWRWIN_MIN_FILL) {
       float sum = 0;
-      for (uint16_t i = 0; i < pw30Fill; i++) sum += pw30[i];
-      float avgW = sum / pw30Fill;
+      for (uint16_t i = 0; i < pwFill; i++) sum += pwrwin[i];
+      float avgW = sum / pwFill;
       float avgA = (battV > 1.0f) ? avgW / battV : 0.0f;
-      J("\"pwr30\":%.0f,", avgW);
       if (avgA < -0.05f && battAh > 0)
-        J("\"rem30\":%u,", (unsigned)(battAh / -avgA * 60.0f));
-      else J("\"rem30\":null,");
-    } else J("\"pwr30\":null,\"rem30\":null,");
+        J("\"remwin\":%u,", (unsigned)(battAh / -avgA * 60.0f));
+      else J("\"remwin\":null,");
+    } else J("\"remwin\":null,");
   }
   {
     char ft[200];
-    snprintf(ft, sizeof ft, "CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
+    uint32_t up = millis() / 1000;
+    char ups[24];
+    if (up < 7200) snprintf(ups, sizeof ups, "up %lu mins", (unsigned long)(up / 60));
+    else snprintf(ups, sizeof ups, "up %luh %02lum", (unsigned long)(up / 3600),
+                  (unsigned long)((up % 3600) / 60));
+    snprintf(ft, sizeof ft, "%s  |  CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
+             ups,
              (unsigned long)cntA, (unsigned long)cntB,
              (unsigned long)(battAt ? (millis() - battAt) / 1000 : 0), lastCmd,
              (faultB[0][0] | faultB[0][1]) ? "  PDM1 FAULT" : "",
@@ -876,13 +885,13 @@ void canTask(void *) {
 void tempTick() {
   if (!tempOK) return;
   uint32_t now = millis();
-  // 30-minute power ring, on its own cadence so it fills quickly after boot.
-  if ((uint32_t)(now - pw30At) >= PW30_MS) {
-    pw30At = now;
+  // Rolling power ring, on its own cadence so it fills quickly after boot.
+  if ((uint32_t)(now - pwAt) >= PWRWIN_MS) {
+    pwAt = now;
     if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {
-      pw30[pw30Head] = (int16_t)(battV * battA);
-      pw30Head = (pw30Head + 1) % PW30_N;
-      if (pw30Fill < PW30_N) pw30Fill++;
+      pwrwin[pwHead] = (int16_t)(battV * battA);
+      pwHead = (pwHead + 1) % PWRWIN_N;
+      if (pwFill < PWRWIN_N) pwFill++;
     }
   }
   if ((uint32_t)(now - tempLastSample) >= TEMP_SAMPLE_MS) {
