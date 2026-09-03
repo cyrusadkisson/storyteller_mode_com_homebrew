@@ -314,7 +314,7 @@ function fanLocked(){return Date.now()<fanLockUntil;}
 // "adjust" arms it for 60 s of inactivity, then it locks again. Any slider
 // activity pushes the deadline out.
 let vrArmUntil=0;
-const VR_ARM_MS=60000;
+const VR_ARM_MS=20000;
 function vrArmed(){return Date.now()<vrArmUntil;}
 function setSliderArm(on){
   if(on) vrArmUntil=Date.now()+VR_ARM_MS; else vrArmUntil=0;
@@ -329,7 +329,9 @@ function paintSlider(){
   // disabled while the slider is armed, and re-enabled when the 60 s lapses.
   const armed=vrArmed()&&!fanLocked();
   vr.disabled=!armed;
-  document.getElementById("vradj").disabled=armed;
+  const b=document.getElementById("vradj");
+  b.disabled=armed;
+  b.textContent=armed?"slider enabled":"enable slider";
 }
 function touchSliderArm(){ if(vrArmed()) setSliderArm(true); }
 function setFanLock(){
@@ -502,11 +504,11 @@ async function poll(){
       if(j.vdir!=null) fanDir=j.vdir?1:0;
       paintFan();
     }
-    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()&&vrArmed()){
-      // The slider shows the SETPOINT, which persists across fan-off and
-      // lid-close. While the panel still owns the vent (vown=0) the firmware
-      // adopts the observed speed into vset, so this shows reality on a
-      // fresh boot instead of an invented default.
+    // Arming gates EDITING, never DISPLAY: the slider always shows the
+    // current setpoint, armed or not. Gating this on vrArmed() (as shipped)
+    // froze the position at the markup default of 0 whenever the slider was
+    // locked -- showing 0 while the fan ran.
+    if(document.activeElement!==vr&&!vr._drag&&!fanLocked()){
       if(j.vset!=null&&j.vset>0){
         fanSet=j.vset;
         vr.value=fanSet;
