@@ -211,6 +211,7 @@ static bool     seenBatt = false, seenTank = false;
 // Correctness cannot depend on someone noticing a frame counter.
 static uint32_t battAt = 0;
 #define BATT_STALE_MS 5000
+#include "app_log.h"
 // The same reasoning applies to CAN1. The head unit re-asserts PDM levels at
 // ~91 Hz, so a gap of even a second is abnormal; if the bus goes quiet -- a
 // tap works loose, the loom is disturbed -- the last levels would otherwise
@@ -249,6 +250,14 @@ static LidState lidState = LID_CLOSED;
 // sent -- and any later command, composing the mode byte from lidOpen, would
 // drive the lid the wrong way. lidCmdAt marks the window.
 static uint32_t lidCmdAt = 0;
+// Vent status freshness + adoption debounce. Status frames arrive at only
+// ~0.25 Hz, and one corrupt frame (a flaky tap) adopted as truth held a wrong
+// lid state for minutes. Now: a settled state change needs two consecutive
+// agreeing frames, and the lid position is reported UNKNOWN if status stops.
+static uint32_t ventAt = 0;
+#define VENT_STALE_MS 10000
+static uint8_t  lidPendCnt = 0;
+static bool     lidPendOpen = false, lidPendAir = false;
 // Fan run state is COMMANDED, never inferred. docs/climate-control.md records
 // that status byte 2 "oscillates between the setpoint and 0 on a rough 5-10 s
 // cycle" -- so the reported speed cannot answer "is the fan on?". It is the
@@ -430,7 +439,7 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     return;
   }
   if (id == ID_VENT_STAT) {
-    seenVent = true;
+    seenVent = true; ventAt = millis();
     // Report-only for SPEED: the fan reports 0 while idle, and writing that
     // back erased the slider's setpoint.
     // The LID is different -- adopt its actual position into our command word,
@@ -450,8 +459,17 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     // Adopt reported position/direction ONLY when settled -- never while the
     // vent is moving, and never during the ~4 s before it admits it is.
     if (!moving && !settling) {
-      lidOpen = repOpen;
-      airIn = (ventRepMode & 0x01);
+      // Two consecutive settled frames must agree before a state change is
+      // believed -- one glitched frame is not the vent's opinion.
+      if (repOpen == lidPendOpen && (ventRepMode & 0x01) == lidPendAir) {
+        if (++lidPendCnt >= 2 && (lidOpen != repOpen || airIn != (ventRepMode & 0x01))) {
+          lidOpen = repOpen;
+          airIn = (ventRepMode & 0x01);
+          lidPendCnt = 0;
+        }
+      } else {
+        lidPendOpen = repOpen; lidPendAir = (ventRepMode & 0x01); lidPendCnt = 1;
+      }
     }
     bool owned = ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS);
     if (ventRepSpeed > 0) {
@@ -620,6 +638,9 @@ void sendState() {
   } else J("\"acmode\":\"?\",\"coolsp\":null,\"heatsp\":null,");
 
   if (seenVent) {
+    // If vent status has gone quiet, the lid position is UNKNOWN, not the
+    // last value -- stale state presented as fact is the recurring bug class.
+    const bool ventFresh = ventAt && (millis() - ventAt < VENT_STALE_MS);
     char vs[64];
     snprintf(vs, sizeof vs, "%s",
              lidState == LID_MOVING ? "moving"
@@ -631,7 +652,8 @@ void sendState() {
       "\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,"
       "\"vown\":%d,\"vobs\":%d,\"fansp\":\"%s\",",
       vs, ventSpeed, ventRepSpeed, airIn ? 1 : 0,
-      (lidState == LID_OPEN) ? 1 : 0, (lidState == LID_MOVING) ? 1 : 0,
+      ventFresh ? ((lidState == LID_OPEN) ? 1 : 0) : -1,
+      ventFresh ? ((lidState == LID_MOVING) ? 1 : 0) : -1,
       ventSetSpeed, ventFanOn ? 1 : 0,
       (ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS)) ? 1 : 0, ventObsSpeed,
       ventFanOn ? (airIn ? "air in" : "air out") : "off");
@@ -732,6 +754,7 @@ out:
 
 // ----- command endpoint ---------------------------------------------------------
 void sendOK(const char *what) {
+  logWrite(3, what);
   snprintf(lastCmd, sizeof lastCmd, "%s @ %lus", what, (unsigned long)(millis() / 1000));
   Serial.printf("cmd: %s\n", what);
   server.send(200, "application/json", "{\"ok\":true}");
@@ -739,6 +762,7 @@ void sendOK(const char *what) {
 
 void onCmd() {
   String c = server.arg("c");
+  { String q = "c=" + c; logWrite(2, q.c_str()); }   // before: death mid-action shows as CMD> without CMD OK
   if (c == "toggle") {
     int i = server.arg("i").toInt();
     if (i < 0 || i > 5) { server.send(400, "text/plain", "bad i"); return; }
@@ -825,6 +849,8 @@ void setup() {
   tempHourStart = millis();
   tempLastSample = millis();
 
+  logInit();
+
   canMux = xSemaphoreCreateMutex();
   SPI.begin(MCP2518_SCLK, MCP2518_MISO, MCP2518_MOSI, MCP2518_CS);
   if (CanA.begin(CAN20_250KBPS, MCP2518FD_40MHz) == CAN_OK) Serial.println("canA: CAN1 250k OK");
@@ -853,6 +879,9 @@ void setup() {
     sendState();
   });
   server.on("/api/cmd", HTTP_POST, onCmd);
+  server.on("/api/log", HTTP_GET, []() {
+    server.send(200, "text/plain", logDump());
+  });
   server.onNotFound([]() {           // captive-portal probes land on the UI
     server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/");
     server.send(302, "text/plain", "");
@@ -899,6 +928,10 @@ void tempTick() {
   if (!tempOK) return;
   uint32_t now = millis();
   // Rolling power ring, on its own cadence so it fills quickly after boot.
+  if ((uint32_t)(now - lastPulseLog) >= 300000UL) {   // 5-min alive pulse
+    lastPulseLog = now;
+    logWrite(4, "pulse");
+  }
   if ((uint32_t)(now - pwAt) >= PWRWIN_MS) {
     pwAt = now;
     if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {

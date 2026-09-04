@@ -505,14 +505,18 @@ async function poll(){
       coolSp=(j.coolsp!=null)?j.coolsp:null;
       document.getElementById("coolsp").textContent=coolSp!=null?coolSp+"°":"--";
     }
-    const sOpen=j.vopen?1:0;          // explicit field, not parsed prose
-    if(Date.now()>=ventHold){
+    // -1 = vent status stale: show "?" rather than holding a stale position.
+    if(j.vopen<0){
+      if(curVent!==-1){curVent=-1;lidMoving=false;paintVent();}
+    }else if(Date.now()>=ventHold){
+      const sOpen=j.vopen?1:0;        // explicit field, not parsed prose
       const was=curVent, wasMoving=lidMoving;
       lidMoving=!!j.vmoving;
       if(!lidMoving) curVent=sOpen;      // trust position only when settled
       if(was!==curVent||wasMoving!==lidMoving){paintVent();paintFan();}
     }
-    document.getElementById("ventst").textContent=lidMoving?"· moving":"";
+    document.getElementById("ventst").textContent=
+      j.vopen<0?"· vent status lost":(lidMoving?"· moving":"");
     if(Date.now()>=fanHold){
       // Authoritative fields only. vrep is deliberately ignored: it reports 0
       // on a 5-10 s cycle while the fan is genuinely running.
