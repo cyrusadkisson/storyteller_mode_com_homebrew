@@ -472,23 +472,6 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     // or a later speed/direction command sends the stale boot default (0x40 =
     // enabled, not open) and closes an open vent.
     ventRepSpeed = b[2]; ventRepMode = b[3];
-    // DIAGNOSTIC (2026-09-04): the app reported the lid OPEN while it was
-    // physically closed. docs/climate-control.md decodes byte 3 as bit4=open,
-    // bit3=moving, bit0=direction; this prints the raw frame so the claim can
-    // be checked against the wire instead of reasoned about. Rate-limited: on
-    // any change of byte 3, and otherwise once every 5 s.
-    {
-      static uint16_t vdbgLast = 0xFFFF;
-      if (ventRepMode != vdbgLast) {
-        vdbgLast = ventRepMode;
-        Serial.printf(
-            "VENT raw %02X %02X %02X %02X %02X %02X %02X %02X | "
-            "b3=%02X open=%d moving=%d dir=%d | lidState=%d lidOpen=%d\n",
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], ventRepMode,
-            (ventRepMode & 0x10) ? 1 : 0, (ventRepMode & 0x08) ? 1 : 0,
-            ventRepMode & 0x01, (int)lidState, lidOpen ? 1 : 0);
-      }
-    }
     bool moving = (ventRepMode & 0x08);
     bool repOpen = (ventRepMode & 0x10);
     ventPosUnsure = (ventRepMode & VENT_POS_UNSURE) != 0;
