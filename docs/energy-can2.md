@@ -158,15 +158,62 @@ among the 132s) and are probably min/max/average plus temperatures.
 > supported only by the count byte (`0x10` = 16) and by sixteen × the decoded
 > value landing near pack voltage.
 
-**Drawn-down test done (2026-08-12) — cell 9 is fine.** With the pack finally
-pulled down, the app showed cell 9 in line with the rest of the pack. The
-2026-08-11/12 shutdown was genuine low-SOC starvation on a stale SOC gauge, not
-a failing cell. The per-cell ordering question above is now moot for practical
-purposes: the pack has no misbehaving cell to track, and fine imbalance below
-~0.01 V remains invisible on the bus anyway.
+**Cell 9 has collapsed — CONFIRMED 2026-09-04.** An earlier drawn-down test
+(2026-08-12) showed cell 9 in line with the rest of the pack, and this document
+carried "cell 9 is fine" for three weeks on the strength of it. That was wrong,
+and the way it was wrong is worth keeping: it was **one reading, at one state of
+charge, under one load.** A cell that fails near its floor looks ordinary
+everywhere else.
 
-**Standing practice (manual):** check the per-cell screen in the Lithionics
-phone app occasionally, e.g. after any deep discharge. No automation needed.
+Read from the Lithionics phone app with the system dead (2026-09-04):
+
+| field | value |
+|---|---|
+| **Cell 9** | **2.80 V** |
+| the other fifteen cells | 3.11 – 3.15 V (avg 3.13) |
+| Lowest / Highest cell | 2.80 / 3.15 |
+| Balance Map | `0000` |
+| SOC / Voltage / Current | 80 % / 49.9 V / 0.6 A |
+| Remaining | 138.3 Ah |
+| Highest recorded temp | 206 °F |
+| Serial | ND050223054 |
+| Status / last status | `000114` / `000034` |
+
+Cell 9 sits **0.33 V below** its neighbours, while the rest of the pack is only
+moderately low. That is a failed cell, not an imbalance — and the balance map
+reads `0000`, so the BMS is not attempting to correct it.
+
+**This is the cause of the shutdowns.** Lithionics protects *per cell*, so the
+BMS opens the contactor when cell 9 reaches its undervoltage floor while the
+other fifteen still hold useful charge and the pack still reads ~50 V. Every
+shutdown therefore looks like a healthy battery dying instantly, and the SOC
+gauge — which is not lying — keeps reporting the charge those fifteen cells
+really do contain.
+
+Usable capacity is now set by cell 9 alone, not by the 138 Ah the app reports.
+
+### The bus cannot see this — and it decides the mapping question
+
+The gap between cell 9 and the rest of the pack is **0.33 V = 33 counts** at the
+frame's 0.01 V per count. That is thirty-three times the field resolution —
+nowhere near the rounding boundary that explanation 1 above rests on.
+
+That makes the two explanations separable by a single capture: **record
+`0x18FF938E`–`0x18FF968E` while cell 9 is this far down.** Sixteen identical
+bytes, with a 33-count spread demonstrably present in the pack, proves
+explanation 2 — the frame carries a replicated min/max/average and not per-cell
+values — and retires the "sixteen cells" reading for good. *This capture has not
+been taken yet; it is the one open item on this node.*
+
+Formally the mapping stays unconfirmed until then. Practically, the conclusion
+already holds: **every per-cell fault this pack has produced has been invisible
+on CAN2 and visible only over Bluetooth in the Lithionics app.** A parallel tap
+cannot decode its way to cell health, and the companion app therefore cannot
+warn on it directly — see the voltage/SOC disagreement warning below, which is
+the closest available proxy.
+
+**Standing practice (manual):** the per-cell screen in the Lithionics phone app
+is the only place a failing cell is visible. Check it after any shutdown.
 
 ---
 
@@ -288,9 +335,58 @@ healthy, and it is the reference point.
 This also explains a BMS shutdown the owner experienced: an A/C start on a pack
 that was genuinely near-empty (the SOC gauge was reading ~55 % while cell
 voltages indicated far less) with one cell already at the floor. The BMS
-alarmed and opened the contactor, which is correct behaviour.
+alarmed and opened the contactor, which is correct behaviour. The cell already
+at the floor was **cell 9**: the August event and the September events share a
+single root cause, confirmed on 2026-09-04.
 
----
+### September shutdowns — CAUSE CONFIRMED: cell 9 (2026-09-04)
+
+Two further total power losses with **no A/C and no fan running**, each leaving
+the gauge reading 75–80 %. The companion board's NVS pulse log (pack V and I
+every 5 min, surviving the power loss) captured the state between events:
+
+```
+50.40 V  -0.3 A   ->   50.00 V  0.0 A   ->   49.80 V  0.0 A   (over ~3.5 h)
+= 3.15 V/cell                    = 3.11 V/cell
+```
+
+**The current reads 0.0 A throughout** — but the van's standing load is ~37 W
+(≈0.7 A), so a closed contactor feeding the system would show it. Zero current
+means the contactor was already open: those voltages are open-circuit, the pack
+settling after a protection event, with the BMS still transmitting (which is why
+the bus showed voltage after a "dead" van).
+
+The pack average of 3.11–3.15 V/cell is low but not a shutdown threshold, and
+that was the puzzle: the pack looked too healthy to have tripped. **The per-cell
+screen resolved it — cell 9 at 2.80 V** (full reading in the cell-monitor
+section above). The BMS was protecting one collapsed cell, not a flat pack.
+
+This retires the stale-SOC theory that was carried here in the first draft of
+this section. The SOC gauge is **not** the problem: 80 % is a fair description of
+what the other fifteen cells hold. Averages hid a single-cell failure — both the
+pack voltage on the bus and the SOC percentage are averages, and cell 9 never
+appeared in either.
+
+**Why the log could not have caught it.** The pulse log records pack V and I,
+both aggregates. Cell 9 is 1/16th of the pack voltage: its 0.33 V collapse moves
+the pack reading by 0.33 V, indistinguishable from a slightly lower state of
+charge. No amount of aggregate logging separates those two, which is exactly why
+the app screen was the deciding instrument.
+
+**What the companion app can still do.** It cannot see cell health, but the
+shutdowns share a signature it *can* see: pack voltage sagging toward ~49–50 V
+while SOC still reads high. A warning on that disagreement (e.g. pack < 51 V
+while SOC > 50 %) would have flagged all three events in advance. That remains
+worth building — it is a proxy for "a cell is near its floor", not a cell
+monitor.
+
+**Standing rule while cell 9 is unrepaired:** usable capacity is far below the
+138 Ah reported, and a shutdown can arrive at any indicated SOC. The fix is a
+pack service conversation with Storyteller/Lithionics, not a software change.
+
+Evidence (local, git-ignored): `images/Screenshot_20260904-130158.png` (NVS pulse
+log), `images/Screenshot_20260904-131516.png`, `-131523.png`, `-131527.png`
+(Lithionics per-cell and status screens).
 
 ## Solar — RESOLVED (2026-08-12)
 
@@ -319,10 +415,17 @@ further to decode.
 
 At 164 Ah × 53 V that 37 W idle is roughly ten days of standing time.
 
-### Formerly-open measurements — both closed (2026-08-12)
+### Formerly-open measurements — one closed, one reopened and answered
 
-True solar output and the cell-9 divergence question both needed a drawn-down
-pack. Normal use provided it: **solar resolved** (175 W array, ~50–80 W real,
-nothing on the bus to decode), **cell 9 resolved** (in line with the pack — the
-earlier "failing cell" suspicion did not survive a real drawdown). No open
-measurement items remain on CAN2.
+**Solar: resolved (2026-08-12).** 175 W array, ~50–80 W real, nothing on the bus
+to decode.
+
+**Cell 9: reopened and confirmed bad (2026-09-04).** The 2026-08-12 drawdown put
+cell 9 "in line with the pack" and this document recorded it as resolved. Three
+weeks and two total shutdowns later the app showed it at **2.80 V against a
+3.11–3.15 V pack**. The earlier test was not wrong about what it measured; it
+was wrong to close the question on a single observation.
+
+One measurement item remains open on CAN2: capture `0x18FF938E`–`0x18FF968E`
+while cell 9 is depressed, to settle whether those sixteen bytes are per-cell
+values or a replicated aggregate.
