@@ -44,30 +44,17 @@
 #include "driver/twai.h"
 
 // ----- WiFi AP ---------------------------------------------------------------
-// SET YOUR OWN CREDENTIALS BEFORE FLASHING. Anyone within radio range who has
-// read this source can otherwise join and operate the van's lights, pump, A/C
-// and vent. There is no screen or reset button on this board, so credentials
-// are compiled in; pick something and write it down.
+// The board is its own access point, with no screen and no reset button, so
+// the credentials are compiled in.
 //
-// KEEP REAL CREDENTIALS OUT OF THE REPOSITORY. Put them in ap_secret.h, which
-// is git-ignored:
-//
-//     #define AP_SSID_OVERRIDE "YourSSID"
-//     #define AP_PASS_OVERRIDE "YourPassword"
-//
-// Without that file the build uses the placeholders below and warns.
-#if __has_include("ap_secret.h")
-#include "ap_secret.h"
-#endif
-#ifndef AP_SSID_OVERRIDE
-#define AP_SSID_OVERRIDE "VanCompanion"
-#endif
-#ifndef AP_PASS_OVERRIDE
-#define AP_PASS_OVERRIDE "storyteller"
-#warning "Using the placeholder AP password from the public repo -- create ap_secret.h."
-#endif
-static const char *AP_SSID = AP_SSID_OVERRIDE;
-static const char *AP_PASS = AP_PASS_OVERRIDE;
+// They are deliberately IN THE CLEAR, by owner decision (2026-09-04). The
+// ap_secret.h override mechanism and its .gitignore entry were removed in
+// favour of a memorable password. The trade is real and accepted: anyone
+// within radio range of the van who has read this repository can join this AP
+// and operate the lights, pump, A/C and vent. Changing these two strings and
+// reflashing is what revokes that.
+static const char *AP_SSID = "VanCompanion";
+static const char *AP_PASS = "storyteller";      // WPA2 requires >= 8 chars
 static const char *MDNS_NAME = "van";         // http://van.local
 
 // ----- board temperature history --------------------------------------------
@@ -103,6 +90,13 @@ static uint16_t ambCnt = 0;
 static int16_t  pwrHist[TEMP_BUCKETS];
 static float    pwrAcc = 0;
 static uint16_t pwrCnt = 0;
+// Pack temperature from the BMS (CAN2 DC_SOURCE_STATUS_2), same buckets and
+// the same tenths-of-C storage as the other two temperature rings. This is the
+// only temperature in the system that is measured INSIDE the battery, which is
+// why it is worth its own history rather than being folded into the die chart.
+static int16_t  ptHist[TEMP_BUCKETS];
+static float    ptAcc = 0;
+static uint16_t ptCnt = 0;
 // Rolling ring for the smoothed time-remaining figure. The hourly buckets are
 // too coarse: the compressor and heater cycle several times an hour, which is
 // exactly the swing being averaged out. The window GROWS: the figure appears
@@ -211,6 +205,24 @@ static bool     seenBatt = false, seenTank = false;
 // Correctness cannot depend on someone noticing a frame counter.
 static uint32_t battAt = 0;
 #define BATT_STALE_MS 5000
+// DC_SOURCE_STATUS_2 carries SoC and pack temperature. It gets its own
+// timestamp because battAt is set by any of the three battery frames: without
+// this, a run of DC1-only traffic would let an unset battT (0 C = 32 F) be
+// averaged into the pack-temperature history as though it were measured.
+static uint32_t battTAt = 0;
+// Voltage/SoC disagreement. A pack reading low while the gauge still reads
+// high means a CELL is near its floor, not that the pack is empty -- the BMS
+// protects per cell, so it opens the contactor on that one cell while the pack
+// average still looks healthy. That is exactly how this van has failed three
+// times (cell 9 at 2.80 V; see docs/energy-can2.md), and pack voltage and SoC
+// are both averages, so this disagreement is the only warning available on the
+// bus. Separate trip and clear thresholds so a pack sitting on the line does
+// not flap the warning on and off.
+#define VSOC_V_TRIP   51.0f
+#define VSOC_V_CLEAR  51.3f
+#define VSOC_SOC_MIN  50.0f
+static bool     vsocBad = false;
+static uint32_t vsocAt = 0;                // board-millis of the last trip
 #include "app_log.h"
 // The same reasoning applies to CAN1. The head unit re-asserts PDM levels at
 // ~91 Hz, so a gap of even a second is abnormal; if the bus goes quiet -- a
@@ -256,6 +268,20 @@ static uint32_t lidCmdAt = 0;
 // agreeing frames, and the lid position is reported UNKNOWN if status stops.
 static uint32_t ventAt = 0;
 #define VENT_STALE_MS 10000
+// Byte 3 bit 2 of the vent status frame. Observed set exactly once, on
+// 2026-09-04: the lid was physically CLOSED while bit 4 claimed open, after
+// the lid had last been moved from the factory panel. A close command produced
+// a brief re-home (the motor squeaked and stopped at once, so the vent's own
+// limit sensing was working) and the flag cleared to a confident 0x00. The
+// van has had three total power losses, and a vent controller rebooting
+// without stored position fits this exactly.
+//
+// The precise meaning is NOT proven -- one observation. But the safe reading
+// is "the vent is not sure where the lid is", and under this project's
+// standing rule an uncertain position is reported as unknown, never as a
+// position. Commands stay enabled: commanding a close is what re-homes it.
+#define VENT_POS_UNSURE 0x04
+static bool     ventPosUnsure = false;
 static uint8_t  lidPendCnt = 0;
 static bool     lidPendOpen = false, lidPendAir = false;
 // Fan run state is COMMANDED, never inferred. docs/climate-control.md records
@@ -446,8 +472,26 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     // or a later speed/direction command sends the stale boot default (0x40 =
     // enabled, not open) and closes an open vent.
     ventRepSpeed = b[2]; ventRepMode = b[3];
+    // DIAGNOSTIC (2026-09-04): the app reported the lid OPEN while it was
+    // physically closed. docs/climate-control.md decodes byte 3 as bit4=open,
+    // bit3=moving, bit0=direction; this prints the raw frame so the claim can
+    // be checked against the wire instead of reasoned about. Rate-limited: on
+    // any change of byte 3, and otherwise once every 5 s.
+    {
+      static uint16_t vdbgLast = 0xFFFF;
+      if (ventRepMode != vdbgLast) {
+        vdbgLast = ventRepMode;
+        Serial.printf(
+            "VENT raw %02X %02X %02X %02X %02X %02X %02X %02X | "
+            "b3=%02X open=%d moving=%d dir=%d | lidState=%d lidOpen=%d\n",
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], ventRepMode,
+            (ventRepMode & 0x10) ? 1 : 0, (ventRepMode & 0x08) ? 1 : 0,
+            ventRepMode & 0x01, (int)lidState, lidOpen ? 1 : 0);
+      }
+    }
     bool moving = (ventRepMode & 0x08);
     bool repOpen = (ventRepMode & 0x10);
+    ventPosUnsure = (ventRepMode & VENT_POS_UNSURE) != 0;
     // Settling window: from a lid command until the vent visibly starts
     // moving. Clearing it on "report agrees with us" is wrong -- after an
     // OPEN command an already-open report agrees immediately, which would
@@ -522,7 +566,7 @@ void onCanBFrame(const twai_message_t &m) {
     battT = raw2cF(d[2] | (d[3] << 8));
     battSoC2 = d[4];
     battMin = d[5] | (d[6] << 8);
-    seenBatt = true; battAt = millis();
+    seenBatt = true; battAt = millis(); battTAt = battAt;
   } else if (m.identifier == ID_DC3) {
     battSoH = d[2];
     battAh = d[3] | (d[4] << 8);
@@ -536,11 +580,13 @@ void onCanBFrame(const twai_message_t &m) {
 }
 
 // ----- JSON state ----------------------------------------------------------------
-// Three 121-bucket histories dominate this buffer: temps are ~5 chars each and
-// power can be 6 ("-1037,"), so worst case is ~3.7 KB before the rest of the
+// FOUR 121-bucket histories dominate this buffer: temps are ~5 chars each and
+// power can be 6 ("-1037,"), so worst case is ~4.3 KB before the rest of the
 // state. The J() macro truncates silently once full, which would break the
 // whole response rather than just a chart -- so size it with real headroom.
-static char jbuf[5120];
+// Grown from 5120 when the pack-temperature history was added; at 5120 the
+// four histories plus state could reach the ceiling and silently truncate.
+static char jbuf[6656];
 
 void sendState() {
   char *w = jbuf;
@@ -560,6 +606,15 @@ void sendState() {
     // + sign. battA already follows this -- the wire value is negated at decode.
     J("\"soc\":%.1f,\"battV\":%.2f,\"battA\":%.2f,\"battW\":%.0f,", soc, battV, battA, battW);
     J("\"packline\":\"Pack: %.1fV  %.0f°F  %uAh\",", battV, battT * 9 / 5 + 32, battAh);
+    J("\"packf\":%s,",
+      (battTAt && (millis() - battTAt < BATT_STALE_MS))
+          ? String(battT * 9 / 5 + 32, 0).c_str() : "null");
+    // vcell is the pack average, NOT the weak cell -- a collapsed cell reads
+    // far below this. It is here because the average is what makes the
+    // disagreement legible: 3.11 V/cell average at 80 % is the tell.
+    J("\"vsoc\":%d,\"vcell\":%.2f,", vsocBad ? 1 : 0, battV / 16.0f);
+    if (vsocBad)
+      J("\"vsocago\":%lu,", (unsigned long)((millis() - vsocAt) / 1000));
 
     J("\"drawline\":\"%.1fA (%.0fW)\",", battA, battW);
     // The BMS sends 0xFFFF whenever it declines to estimate -- which it does
@@ -582,7 +637,8 @@ void sendState() {
       J("\"lifeline\":\"\",");
     J("\"batt\":\"\",");
   } else J("\"soc\":null,\"batt\":\"%s\","
-           "\"packline\":\"\",\"drawline\":\"--\",\"lifeline\":\"\",",
+           "\"packline\":\"\",\"drawline\":\"--\",\"lifeline\":\"\","
+           "\"packf\":null,\"vsoc\":0,",
            seenBatt ? "CAN2 battery data stale" : "no CAN2 battery frames");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
   // Scoped: a declaration here would cross the J() macro's goto.
@@ -650,16 +706,17 @@ void sendState() {
     // oscillates to 0 while the fan runs and must not drive any UI state.
     J("\"ventst\":\"%s\",\"vspeed\":%d,\"vrep\":%d,\"vdir\":%d,"
       "\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,"
-      "\"vown\":%d,\"vobs\":%d,\"fansp\":\"%s\",",
+      "\"vown\":%d,\"vobs\":%d,\"vunsure\":%d,\"fansp\":\"%s\",",
       vs, ventSpeed, ventRepSpeed, airIn ? 1 : 0,
-      ventFresh ? ((lidState == LID_OPEN) ? 1 : 0) : -1,
+      (ventFresh && !ventPosUnsure) ? ((lidState == LID_OPEN) ? 1 : 0) : -1,
       ventFresh ? ((lidState == LID_MOVING) ? 1 : 0) : -1,
       ventSetSpeed, ventFanOn ? 1 : 0,
       (ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS)) ? 1 : 0, ventObsSpeed,
+      ventPosUnsure ? 1 : 0,
       ventFanOn ? (airIn ? "air in" : "air out") : "off");
   } else J("\"ventst\":\"?\",\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
-           "\"vopen\":0,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
-           "\"vown\":0,\"vobs\":0,\"fansp\":\"\",");
+           "\"vopen\":-1,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
+           "\"vown\":0,\"vobs\":0,\"vunsure\":0,\"fansp\":\"\",");
 
   if (seenRix) {
     // 0x724: current x0.01 C, target x0.1 C. Rixen takes the target with NO
@@ -700,6 +757,14 @@ void sendState() {
         v = (int16_t)(pwrAcc / pwrCnt);
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%d", i ? "," : "", v);
+    }
+    J("],\"packhist\":[");
+    for (int i = 0; i < TEMP_BUCKETS; i++) {
+      int16_t v = ptHist[i];
+      if (i == TEMP_BUCKETS - 1 && ptCnt >= TEMP_MIN_VALID)
+        v = (int16_t)(ptAcc / ptCnt * 10.0f);
+      if (v == INT16_MIN) J("%snull", i ? "," : "");
+      else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
     }
     J("],\"tempnow\":%.1f,\"tempfill\":%u,\"temphours\":%d,",
       temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_HOURS);
@@ -844,6 +909,7 @@ void setup() {
 
   for (int i = 0; i < TEMP_BUCKETS; i++) {
     tempHist[i] = INT16_MIN; ambHist[i] = INT16_MIN; pwrHist[i] = INT16_MIN;
+    ptHist[i] = INT16_MIN;
   }
   Serial.printf("temp sensor: %.1f C\n", temperatureRead());
   tempHourStart = millis();
@@ -963,6 +1029,26 @@ void tempTick() {
       pwrAcc += battV * battA;
       pwrCnt++;
     }
+    // Pack temperature rides on DC2 specifically, so it needs DC2's own
+    // freshness rather than the shared battery timestamp.
+    if (battTAt && (uint32_t)(now - battTAt) < BATT_STALE_MS) {
+      ptAcc += battT;
+      ptCnt++;
+    }
+  }
+  // Voltage/SoC disagreement. Evaluated here rather than in sendState so it is
+  // detected and logged whether or not a phone is connected -- the shutdowns
+  // this exists to catch happen with nobody looking.
+  if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {
+    float socNow = battSoC2 * 0.5f;
+    if (!vsocBad && battV < VSOC_V_TRIP && socNow > VSOC_SOC_MIN) {
+      vsocBad = true;
+      vsocAt = now;
+      logWrite(5, "vsoc");
+    } else if (vsocBad && (battV > VSOC_V_CLEAR || socNow <= VSOC_SOC_MIN)) {
+      vsocBad = false;
+      logWrite(6, "vsoc ok");
+    }
   }
   if ((uint32_t)(now - tempHourStart) >= 900000UL) {   // 15-minute buckets
     tempHourStart += 900000UL;
@@ -982,6 +1068,11 @@ void tempTick() {
         (pwrCnt >= TEMP_MIN_VALID) ? (int16_t)(pwrAcc / pwrCnt)
                                    : INT16_MIN;
     pwrAcc = 0; pwrCnt = 0;
+    for (int i = 0; i < TEMP_BUCKETS - 1; i++) ptHist[i] = ptHist[i + 1];
+    ptHist[TEMP_BUCKETS - 1] =
+        (ptCnt >= TEMP_MIN_VALID) ? (int16_t)(ptAcc / ptCnt * 10.0f)
+                                  : INT16_MIN;
+    ptAcc = 0; ptCnt = 0;
     if (tempFilled < TEMP_BUCKETS) tempFilled++;
   }
 }

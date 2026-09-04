@@ -1,10 +1,11 @@
 #pragma once
 // Permanent event log (NVS flash). Lives in a header because the .ino
 // preprocessor mangles struct-based code the same way it mangled the UI.
-// Survives reboots and van power loss. The van has crashed twice with total
+// Survives reboots and van power loss. The van has crashed three times with
 // power loss; the last entries bound WHEN it died, and each pulse carries
 // pack voltage/current so the trend into a death is recorded. Entry types:
-// 1 boot, 2 cmd-before, 3 cmd-after, 4 pulse. Actions log before AND after;
+// 1 boot, 2 cmd-before, 3 cmd-after, 4 pulse, 5 voltage/SoC disagreement
+// tripped, 6 that disagreement cleared. Actions log before AND after;
 // a 2 without a 3 means death mid-action. Wear: ~290 writes/day is decades
 // of NVS life.
 #include <Preferences.h>
@@ -49,7 +50,8 @@ static void logInit() {
 
 static String logDump() {
   LogE e; char k[8]; String out;
-  const char *tn[5] = {"?", "BOOT", "CMD>", "CMD OK", "pulse"};
+  const char *tn[7] = {"?", "BOOT", "CMD>", "CMD OK", "pulse",
+                       "VSOC!", "VSOC ok"};
   for (unsigned i = 0; i < LOGN; i++) {
     snprintf(k, sizeof k, "e%u", (unsigned)((logSeq + 1 + i) % LOGN));
     size_t n = vlog.getBytesLength(k);
@@ -58,7 +60,7 @@ static String logDump() {
     char ln[128];
     snprintf(ln, sizeof ln, "%08lu  %8lums  %-7s  %5.2fV %6.1fA  %s\n",
              (unsigned long)e.seq, (unsigned long)e.ms,
-             tn[e.type <= 4 ? e.type : 0], e.vCenti / 100.0f, e.aDeci / 10.0f,
+             tn[e.type <= 6 ? e.type : 0], e.vCenti / 100.0f, e.aDeci / 10.0f,
              e.cmd);
     out += ln;
   }

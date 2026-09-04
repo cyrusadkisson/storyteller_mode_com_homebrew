@@ -67,8 +67,3 @@ captures/
 # Personal downloads (Facebook photos/screenshots re: ModeWifi project)
 hanger/
 
-# ---------------------------------------------------------------------------
-# Real WiFi AP credentials for the companion board. The firmware reads these
-# from ap_secret.h when present; the repo only ever carries placeholders.
-# ---------------------------------------------------------------------------
-ap_secret.h

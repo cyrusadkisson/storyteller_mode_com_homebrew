@@ -232,7 +232,7 @@ to position on its own. Every command acknowledged by `0x18E80358`
 |---|---|
 | 0–1 | instance / constant, mirroring the command |
 | 2 | fan speed — echoes the command, but **oscillates between the setpoint and `0` on a rough 5–10 s cycle** while the command byte holds steady. Either the fan physically cycles, or this reports something other than the setpoint. **Unexplained.** |
-| **3** | **state flags** — bit 4 = open · **bit 3 = in motion** · bit 0 = air direction |
+| **3** | **state flags** — bit 4 = open · **bit 3 = in motion** · **bit 2 = position not known** (see below) · bit 0 = air direction |
 | **4–5** | **temperature**, ×0.03125 offset −273 → 32–34 °C (≈90–93 °F), drifts while the fan runs |
 
 Close transit, fully timed:
@@ -244,6 +244,47 @@ Close transit, fully timed:
 ```
 
 Open transit: ~10–11 s, measured on two independent runs.
+
+### Byte 3 bit 2 — the lid position can be UNKNOWN (2026-09-04)
+
+The app reported the lid **open while it was physically closed**. The wire said
+so too: byte 3 read `0x14` — bit 4 (open) set, plus **bit 2, which had never
+been observed set in any earlier capture**.
+
+Two things ruled out the obvious explanations. Bytes 4–5 decoded to 29 °C
+(84 °F), a sane cabin temperature, so the frame and byte offsets were right.
+And commanding a close made the motor squeak and stop immediately — the vent's
+own limit sensing was working perfectly, so this was not a failed sensor.
+
+A full app-driven cycle then gave a clean mapping with bit 2 absent throughout:
+
+```
+ 3–18 s   b3=00   closed, steady
+ 21.4 s           open command sent
+ 25.3 s   b3=08   in motion
+ 35.8 s   b3=10   open, settled
+ 43.8 s           close command sent
+ 47.9 s   b3=08   in motion
+ 58.4 s   b3=00   closed, settled
+```
+
+So `0x00` closed / `0x08` moving / `0x10` open is confirmed, and the close
+command **cleared bit 2 permanently** — the vent regained certainty by driving
+to a limit.
+
+**Reading:** bit 2 means the vent does not know where the lid is, and bit 4 is
+then stale or meaningless. The lid had last been moved from the factory panel,
+and the van has suffered three total power losses; a vent controller rebooting
+with no stored position fits the evidence.
+
+**This is one observation, so the meaning is inferred, not proven.** The app's
+behaviour does not depend on getting it exactly right: when bit 2 is set the
+position is reported as UNKNOWN rather than as a position, which is correct
+under the project's standing rule either way. The toggle stays enabled, because
+commanding a close is what re-homes the vent.
+
+*To confirm: check byte 3 after the next van power loss. Bit 2 reappearing
+would settle it.*
 
 ### The "in motion" flag lags the command by ~4 s
 

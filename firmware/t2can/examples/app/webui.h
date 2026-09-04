@@ -58,13 +58,18 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </style></head><body>
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
-<h2>Battery</h2><div class="card">
+<h2>Battery &amp; Power</h2><div class="card">
+<div id="vsocwarn" class="warn" style="display:none"></div>
 <div class="row"><span class="name">State of charge</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
 <div class="row"><span>Power flow</span><span id="drawline">--</span></div>
 <div id="pwrchart" style="overflow-x:auto"></div>
 <div class="row"><span>&#x231B; <span class="qual">(derived from current flow)</span></span><span id="remnow">--</span></div>
 <div class="row" id="remhalfrow" style="display:none"><span>&#x231B; <span class="qual" id="remlab">(derived from past 15m usage)</span></span><span id="remhalf">--</span></div>
+<div class="row"><span class="name">Pack temperature</span><b id="packf">--</b></div>
+<div id="packchart" style="overflow-x:auto"></div>
+<div class="row"><span class="name">Inverter <span class="sub" id="invline"></span></span>
+<span><button id="invtog">off</button></span></div>
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches <span class="sub" style="text-transform:none;letter-spacing:0">(use panel for dimming)</span></h2><div class="card">
@@ -98,9 +103,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <input type="range" id="vrange" min="0" max="200" value="0" disabled style="flex:1"></div>
 </div>
 
-<h2>Power</h2><div class="card">
-<div class="row"><span class="name">Inverter <span class="sub" id="invline"></span></span>
-<span><button id="invtog">off</button></span></div>
+<h2>Tanks</h2><div class="card">
 <div class="row"><span class="name">Fresh water</span>
 <span><b id="fresh">--</b><span class="bar"><div id="freshbar"></div></span></span></div>
 <div class="row"><span class="name">Gray water</span>
@@ -268,13 +271,20 @@ let fanLockUntil=0;          // airflow-change lockout (see setFanLock)
 let lidMoving=false;
 function paintVent(){
   const b=document.getElementById("vtog");
-  b.textContent=lidMoving?"···":(curVent?"Open":"Closed");
-  b.className=lidMoving?"sel":(curVent?"on":"sel");
+  // curVent is -1 when the position is unknown. -1 is TRUTHY in JS, so the
+  // old `curVent?"Open":"Closed"` rendered a green "Open" for an unknown lid
+  // -- the exact "says open while it is shut" failure, from a second cause.
+  // Compare explicitly.
+  b.textContent=lidMoving?"···":(curVent<0?"?":(curVent>0?"Open":"Closed"));
+  b.className=lidMoving?"sel":(curVent>0?"on":"sel");
   b.disabled=lidMoving;                     // no commands mid-transit
 }
 document.getElementById("vtog").onclick=()=>{
   if(lidMoving)return;
-  curVent^=1;
+  // From unknown (-1), the useful command is CLOSE: it drives the vent to its
+  // limit, which is what re-homes it. XOR on -1 would give 0 by accident
+  // rather than by intent, so say it outright.
+  curVent = (curVent<0) ? 0 : (curVent^1);
   if(!curVent){curFan=0;fanHold=Date.now()+3000;}   // closed lid => fan off
   lidMoving=true;                           // optimistic: motion starts now
   paintVent(); paintFan();
@@ -516,7 +526,8 @@ async function poll(){
       if(was!==curVent||wasMoving!==lidMoving){paintVent();paintFan();}
     }
     document.getElementById("ventst").textContent=
-      j.vopen<0?"· vent status lost":(lidMoving?"· moving":"");
+      j.vunsure?"· position unknown — tap to re-home"
+               :(j.vopen<0?"· vent status lost":(lidMoving?"· moving":""));
     if(Date.now()>=fanHold){
       // Authoritative fields only. vrep is deliberately ignored: it reports 0
       // on a 5-10 s cycle while the fan is genuinely running.
@@ -585,6 +596,25 @@ async function poll(){
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");
+    if(j.packhist) drawTemp(j.packhist, j.tempfill||0, j.temphours, "packchart", 0);
+    document.getElementById("packf").textContent=
+      j.packf!=null?j.packf.toFixed(0)+"°F":"--";
+    // Voltage/SoC disagreement. Worded as what it MEANS -- a cell near its
+    // floor -- because "low voltage at high charge" reads like a gauge fault,
+    // which is the wrong conclusion and the one that cost three shutdowns.
+    {
+      const w=document.getElementById("vsocwarn");
+      if(j.vsoc&&j.battV!=null&&j.soc!=null){
+        const ago=j.vsocago||0;
+        const h=Math.floor(ago/3600), m=Math.floor((ago%3600)/60);
+        w.textContent=
+          `Warning: pack is ${j.battV.toFixed(1)}V (${(j.vcell||j.battV/16).toFixed(2)}V/cell average) `+
+          `while the gauge reads ${j.soc.toFixed(0)}%. That gap means a cell is near its floor, `+
+          `not that the pack is empty — the BMS can open the contactor and kill all power at any `+
+          `indicated charge. Started ${h}h ${m}m ago.`;
+        w.style.display="block";
+      } else w.style.display="none";
+    }
     document.getElementById("foot").textContent=
       (j.packline?j.packline+"\n":"")+(j.foot||"");
   }catch(e){}
@@ -664,7 +694,7 @@ function drawPower(hist, fill, days){
 // has no calendar -- millis() resets on boot -- so the axis is relative,
 // "-Nd" through to "now". Hours with too little data arrive as null and are drawn as gaps, not
 // interpolated across.
-function drawTemp(hist, fill, days, elId){
+function drawTemp(hist, fill, days, elId, tmax){
   if(!hist||!hist.length)return;
   const DAYS=days||Math.round((hist.length-1)/24);   // derived, never hardcoded
   // YW/YR: label gutters. The chart scrolls horizontally, so the axis is
@@ -699,9 +729,13 @@ function drawTemp(hist, fill, days, elId){
   // ESP32-S3 maximum rated ambient is 85 °C = 185 °F. Drawn only when the
   // current scale actually reaches it -- an off-scale line would be
   // misleading, and a line pinned to the top edge doubly so.
-  const TMAX=185;
+  // Default is the ESP32-S3 die limit. Other sensors pass their own, or 0 for
+  // none: an "85°C max" line on a BATTERY chart would be actively wrong, not
+  // merely unused, so the pack chart disables it rather than relying on the
+  // limit happening to sit off-scale.
+  const TMAX=(tmax===undefined)?185:tmax;
   let yaxis="";
-  if(TMAX>=lo&&TMAX<=hi){
+  if(TMAX&&TMAX>=lo&&TMAX<=hi){
     const y=H-PAD-(TMAX-lo)/(hi-lo)*(H-PAD-TOP);
     yaxis+=`<line x1="${YW}" y1="${y.toFixed(1)}" x2="${W-YR}" y2="${y.toFixed(1)}" `+
            `stroke="#c0392b" stroke-width="1.5"/>`;
