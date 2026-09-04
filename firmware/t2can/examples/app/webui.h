@@ -67,7 +67,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row" id="remhalfrow" style="display:none"><span>&#x231B; <span class="qual" id="remlab">(derived from past 15m usage)</span></span><span id="remhalf">--</span></div>
 <div class="sub" id="batt"></div></div>
 
-<h2>Lights &amp; switches</h2><div class="card">
+<h2>Lights &amp; switches <span class="sub" style="text-transform:none;letter-spacing:0">(use panel for dimming)</span></h2><div class="card">
 <div id="can1warn" class="warn" style="display:none">Control bus not responding — states below are last known, and controls will not take effect.</div>
 <table class="dimtbl"><tbody id="switches"></tbody></table></div>
 
