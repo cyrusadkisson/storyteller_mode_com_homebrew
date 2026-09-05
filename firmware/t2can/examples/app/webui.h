@@ -112,7 +112,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </div>
 
 <h2>Rixen hydronic heat <span class="sub" style="text-transform:none;letter-spacing:0">(read-only, use panel)</span></h2>
-<div class="card" id="rixcard">
+<div class="card">
 <div class="row"><span class="name">Cabin <span class="sub" id="rixheat"></span></span><b id="rixcur">--</b></div>
 <div class="row"><span class="name">Target</span><b id="rixtgt">--</b></div>
 <div class="row sub2"><span class="name">Furnace</span><b id="rixfurn">--</b></div>
@@ -633,9 +633,12 @@ async function poll(){
       // section reports the WEAKEST CELL rather than debating what the bytes
       // are -- the BMS opens the contactor on the weakest cell, never on the
       // pack average, which is the whole reason this van dies at 80 % showing.
+      // Take the minimum FROM THE BOARD. It is the same number the weak-cell
+      // warning is raised from, so recomputing it here could name a different
+      // cell in the grid than the banner names in its text.
       const cs=j.cells||[];
-      let lo=999,hi=-1,loI=-1;
-      cs.forEach((v,i)=>{ if(v<lo){lo=v;loI=i;} if(v>hi)hi=v; });
+      const lo=(j.cellmin!=null)?j.cellmin:0;
+      const loI=(j.cellminc!=null)?(j.cellminc-1):-1;
       const have=j.cellfresh&&cs.length&&loI>=0;
       // The weak-cell banner sits at the top of the battery card, above the
       // V/SoC proxy: this is the condition that actually opens the contactor.

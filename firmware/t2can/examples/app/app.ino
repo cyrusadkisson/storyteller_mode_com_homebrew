@@ -896,7 +896,7 @@ void sendState() {
     // Three separate lines so the UI can lay them out; sign convention is a
     // DRAW negative, a surplus (shore, solar, alternator) positive with no
     // + sign. battA already follows this -- the wire value is negated at decode.
-    J("\"soc\":%.1f,\"battV\":%.2f,\"battA\":%.2f,\"battW\":%.0f,", soc, battV, battA, battW);
+    J("\"soc\":%.1f,\"battV\":%.2f,", soc, battV);
     // Temperature is NOT repeated here -- it has its own row and chart in the
     // battery card. Voltage and amp-hours have no other home, so they stay.
     J("\"packline\":\"Pack: %.1fV  %uAh\",", battV, battAh);
@@ -998,26 +998,23 @@ void sendState() {
     // If vent status has gone quiet, the lid position is UNKNOWN, not the
     // last value -- stale state presented as fact is the recurring bug class.
     const bool ventFresh = ventAt && (millis() - ventAt < VENT_STALE_MS);
-    char vs[64];
-    snprintf(vs, sizeof vs, "%s",
-             lidState == LID_MOVING ? "moving"
-                                    : (lidState == LID_OPEN ? "open" : "closed"));
     // vset = the setpoint (survives fan-off); vfan = commanded run state.
     // vrep is the raw reported speed, kept for diagnostics only -- it
     // oscillates to 0 while the fan runs and must not drive any UI state.
-    J("\"ventst\":\"%s\",\"vspeed\":%d,\"vrep\":%d,\"vdir\":%d,"
+    // No status STRING is sent: the UI composes its own wording from these
+    // fields, and a second, unused rendering here was free to drift from it.
+    J("\"vspeed\":%d,\"vrep\":%d,\"vdir\":%d,"
       "\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,"
-      "\"vown\":%d,\"vobs\":%d,\"vunsure\":%d,\"fansp\":\"%s\",",
-      vs, ventSpeed, ventRepSpeed, airIn ? 1 : 0,
+      "\"vown\":%d,\"vobs\":%d,\"vunsure\":%d,",
+      ventSpeed, ventRepSpeed, airIn ? 1 : 0,
       (ventFresh && !ventPosUnsure) ? ((lidState == LID_OPEN) ? 1 : 0) : -1,
       ventFresh ? ((lidState == LID_MOVING) ? 1 : 0) : -1,
       ventSetSpeed, ventFanOn ? 1 : 0,
       (ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS)) ? 1 : 0, ventObsSpeed,
-      ventPosUnsure ? 1 : 0,
-      ventFanOn ? (airIn ? "air in" : "air out") : "off");
-  } else J("\"ventst\":\"?\",\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
+      ventPosUnsure ? 1 : 0);
+  } else J("\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
            "\"vopen\":-1,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
-           "\"vown\":0,\"vobs\":0,\"vunsure\":0,\"fansp\":\"\",");
+           "\"vown\":0,\"vobs\":0,\"vunsure\":0,");
 
   if (seenRix) {
     // 0x724: current x0.01 C, target x0.1 C. Rixen takes the target with NO
@@ -1033,10 +1030,10 @@ void sendState() {
   else J("\"fresh\":null,\"gray\":null,");
 
   {
-    // The sixteen candidate per-cell bytes are bytes 4..7 of the last four
-    // frames. Report them raw, plus the spread, which is the whole question:
-    // a spread that stays 0 while the pack is known to hold a collapsed cell
-    // proves these are not per-cell values.
+    // The sixteen per-cell bytes are bytes 4..7 of the last four frames.
+    // CONFIRMED per-cell on 2026-09-05: one byte read 0x7B against fifteen
+    // 0x7D, matching the phone app exactly (docs/energy-can2.md). Reported raw
+    // alongside the spread, which is what makes a diverging cell obvious.
     bool cf = cellAt && (millis() - cellAt < CELL_STALE_MS);
     J("\"cellfresh\":%d,\"cells\":[", cf ? 1 : 0);
     int lo = 255, hi = 0;
@@ -1047,10 +1044,12 @@ void sendState() {
         if (cellSeen[f]) { if (v < lo) lo = v; if (v > hi) hi = v; }
       }
     J("],\"cellspread\":%d,", (lo <= hi) ? (hi - lo) : 0);
-    // cellrep is the BMS's OWN lowest-cell field (0x18FF918E byte 7), kept
-    // beside our minimum of the sixteen as a cross-check. They should agree;
-    // if they ever do not, one of the two decodes is wrong and we want to see
-    // it rather than average it away.
+    // cellmin/cellminc are the SAME numbers the weak-cell warning is raised
+    // from, so the UI must display these rather than recompute its own -- a
+    // second minimum could name a different cell than the banner does.
+    // cellrep is the BMS's own lowest-cell field (0x18FF918E byte 7), carried
+    // beside ours as a cross-check; if the two ever disagree, one of the two
+    // decodes is wrong and that should be visible rather than averaged away.
     J("\"cellbad\":%d,\"cellmin\":%d,\"cellminc\":%d,\"cellrep\":%d,",
       cellBad ? 1 : 0, cellMinV, cellMinIdx + 1, cellFrm[0][7]);
     if (cellBad)
@@ -1071,7 +1070,7 @@ void sendState() {
     for (int i = 0; i < TEMP_BUCKETS; i++) {
       int16_t v = tempHist[i];
       if (i == TEMP_BUCKETS - 1 && tempCnt >= TEMP_MIN_VALID)
-        v = (int16_t)(tempAcc / tempCnt * 10.0f);      // hour in progress
+        v = (int16_t)(tempAcc / tempCnt * 10.0f);      // bucket in progress
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
     }
@@ -1104,9 +1103,8 @@ void sendState() {
     if (hotAt)
       J("\"hotat\":%lu,\"hotago\":%lu,",
         (unsigned long)hotAt, (unsigned long)((millis() - hotAt) / 1000));
-    // Mean power over the last 30 minutes, and the minutes remaining it
-    // implies. Needs a few minutes of samples before it means anything.
-    // Window grows 15m -> 1h; the UI derives the label from pwrwinN.
+    // Mean power over the window, and the time remaining it implies. The ring
+    // holds one hour; the row appears once the window spans fifteen minutes.
     // The window SPAN in minutes, capped at the ring's one hour. The UI used to
     // derive this from the sample count, which understates a sparsely sampled
     // window -- 120 samples over a real 15 minutes would have read "10m".
@@ -1337,10 +1335,11 @@ void setup() {
 }
 
 // CAN work must not queue behind HTTP: the HU re-asserts every ~11 ms and we
-// have to see those frames promptly to mirror state. Sharing the
-// Arduino loop with the web server made injections land late or not at all,
-// and the light averaged between our level and the HU's -> visible flicker.
-// The CAN work therefore owns core 0; the web server keeps core 1.
+// have to see those frames promptly to mirror state. Sharing the Arduino loop
+// with the web server made injections land late or not at all, and the light
+// averaged between our level and the HU's -> visible flicker.
+// CAN therefore owns core 1 (see xTaskCreatePinnedToCore below); core 0 is the
+// WiFi stack's, at priority 23, which nothing here can outrun.
 void canTask(void *) {
   for (;;) {
     bool worked = false;
@@ -1362,13 +1361,12 @@ void canTask(void *) {
   }
 }
 
-// Roll the accumulator into a bucket every hour. All timing uses unsigned
+// Roll the accumulators into a bucket every 15 minutes. All timing uses unsigned
 // subtraction so the 49.7-day millis() rollover is handled -- this box can run
 // for months, and a naive comparison would corrupt the history at ~7 weeks.
 void tempTick() {
   if (!tempOK) return;
   uint32_t now = millis();
-  // Rolling power ring, on its own cadence so it fills quickly after boot.
   if ((uint32_t)(now - lastPulseLog) >= 300000UL) {   // 5-min alive pulse
     lastPulseLog = now;
     logWrite(4, "pulse");
@@ -1454,7 +1452,7 @@ void tempTick() {
   }
   if ((uint32_t)(now - tempHourStart) >= 900000UL) {   // 15-minute buckets
     tempHourStart += 900000UL;
-    // Shift the ring left; the newest completed hour lands at the end.
+    // Shift the ring left; the newest completed bucket lands at the end.
     for (int i = 0; i < TEMP_BUCKETS - 1; i++) tempHist[i] = tempHist[i + 1];
     tempHist[TEMP_BUCKETS - 1] =
         (tempCnt >= TEMP_MIN_VALID) ? (int16_t)(tempAcc / tempCnt * 10.0f)
