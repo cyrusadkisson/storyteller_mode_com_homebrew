@@ -205,6 +205,14 @@ explanation 2 — the frame carries a replicated min/max/average and not per-cel
 values — and retires the "sixteen cells" reading for good. *This capture has not
 been taken yet; it is the one open item on this node.*
 
+**The companion board now captures all six `0x8E` frames raw (2026-09-04)** and
+the app shows the sixteen bytes, their spread in counts, and the raw payloads,
+under "Cell monitor (mapping unconfirmed)". Nothing is decoded into state: a
+guess baked into the capture would destroy the evidence it exists to collect.
+The spread is the answer — if it stays 0 while the pack is known to hold a cell
+0.33 V down, these are not per-cell values. Watch it during the next drawdown;
+at full charge the cells genuinely are alike and a zero spread proves nothing.
+
 Formally the mapping stays unconfirmed until then. Practically, the conclusion
 already holds: **every per-cell fault this pack has produced has been invisible
 on CAN2 and visible only over Bluetooth in the Lithionics app.** A parallel tap

@@ -119,6 +119,13 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
+<h2>Cell monitor <span class="sub" style="text-transform:none;letter-spacing:0">(mapping unconfirmed)</span></h2><div class="card">
+<div class="row"><span class="name">Spread across the 16 bytes</span><b id="cellspread">--</b></div>
+<div id="cellgrid" class="sub" style="font-family:monospace;white-space:pre;overflow-x:auto"></div>
+<div class="sub" id="cellnote" style="margin-top:8px"></div>
+<div class="sub" id="cellraw" style="font-family:monospace;white-space:pre;overflow-x:auto;font-size:11px;margin-top:8px;opacity:.6"></div>
+</div>
+
 <h2>Phone app board temp (ok up to 185&deg;F)</h2><div class="card">
 <div id="tempchart" style="overflow-x:auto"></div>
 <div class="row" id="hotwarnrow" style="display:none">
@@ -610,6 +617,27 @@ async function poll(){
           `Warning: Board was >185°F for more than an hour ${d}d ${h}h ago`;
         row.style.display="flex";
       } else row.style.display="none";
+    }
+    // Cell monitor. The decoded volts use the PROPOSED scaling (2.00 + b/100)
+    // and are shown only as a convenience -- the raw bytes below them are the
+    // evidence, and the spread is the answer. Nothing here is treated as fact.
+    {
+      const cs=j.cells||[];
+      document.getElementById("cellspread").textContent=
+        j.cellfresh?((j.cellspread/100).toFixed(2)+"V  ("+j.cellspread+" counts)"):"--";
+      let g="";
+      cs.forEach((v,i)=>{
+        g+=(i%4===0?(i?"\n":""):"   ")+
+           ("c"+(i+1)).padStart(3," ")+" "+(2+v/100).toFixed(2);
+      });
+      document.getElementById("cellgrid").textContent=j.cellfresh?g:"";
+      document.getElementById("cellnote").textContent=
+        !j.cellfresh?"No cell monitor frames on CAN2.":
+        (j.cellspread>0
+          ?"These bytes DIVERGED — they carry real per-cell values. Record this: it settles the open question in docs/energy-can2.md."
+          :"All sixteen identical, as in every capture so far. Consistent with one aggregate replicated sixteen times rather than per-cell values. The test only means something while a cell is actually depressed — at a full charge the cells really are alike.");
+      document.getElementById("cellraw").textContent=
+        j.cellfresh&&j.cellraw?j.cellraw.join("\n"):"";
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");

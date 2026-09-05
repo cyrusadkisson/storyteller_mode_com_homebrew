@@ -145,6 +145,21 @@ static const uint32_t ID_DC2        = 0x19FFFC46UL;  // battery temp / SoC / tim
 static const uint32_t ID_DC3        = 0x19FFFB46UL;  // battery SoH / Ah remaining
 static const uint32_t ID_INV_CMD    = 0x19FFD3F2UL;  // inverter on/off (we TX, CAN2)
 static const uint32_t ID_INV_AC     = 0x19FFD7E1UL;  // inverter/shore AC line status
+// Cell monitor (SA 0x8E), six consecutive PGNs 0x18FF918E..0x18FF968E, each a
+// further 0x100 apart. The last four carry four bytes each = sixteen values,
+// which is the pack's cell count -- but those sixteen bytes have NEVER been
+// seen to differ from one another at any state of charge, so whether they are
+// per-cell values or one aggregate replicated sixteen times is UNRESOLVED.
+// See docs/energy-can2.md. Captured raw here so the question answers itself:
+// cell 9 sits 33 counts below its neighbours at 0.01 V per count, far outside
+// the truncation that made the earlier observation ambiguous, so the next
+// drawdown decides it. The first two frames have a different shape and may
+// carry min/max/average -- if a MIN is in there, the weak cell is visible on
+// the bus after all, which would matter more than the sixteen.
+#define ID_CELL_BASE 0x18FF918EUL
+#define ID_CELL_STEP 0x100UL
+#define ID_CELL_N    6
+#define CELL_STALE_MS 5000
 // Rixen hydronic heater: standard 11-bit ids, not J1939.
 // READ-ONLY BY DESIGN. Writes are accepted by the heater (verified 2026-08-26:
 // a target change took effect in ~300 ms) but the head unit re-asserts every
@@ -210,6 +225,9 @@ static uint32_t battAt = 0;
 // this, a run of DC1-only traffic would let an unset battT (0 C = 32 F) be
 // averaged into the pack-temperature history as though it were measured.
 static uint32_t battTAt = 0;
+static uint8_t  cellFrm[ID_CELL_N][8];     // raw, exactly as received
+static bool     cellSeen[ID_CELL_N];
+static uint32_t cellAt = 0;
 // Voltage/SoC disagreement. A pack reading low while the gauge still reads
 // high means a CELL is near its floor, not that the pack is empty -- the BMS
 // protects per cell, so it opens the contactor on that one cell while the pack
@@ -559,6 +577,15 @@ void onCanBFrame(const twai_message_t &m) {
     invAcV = (d[1] | (d[2] << 8)) * 0.05f;
     invHz = (d[5] | (d[6] << 8)) / 128.0f;
     seenInv = true;
+  } else if (m.identifier >= ID_CELL_BASE &&
+             m.identifier <= ID_CELL_BASE + (ID_CELL_N - 1) * ID_CELL_STEP &&
+             ((m.identifier - ID_CELL_BASE) % ID_CELL_STEP) == 0) {
+    // Stored verbatim and decoded nowhere: the mapping is a guess, and a guess
+    // baked into the capture would destroy the evidence it exists to gather.
+    uint8_t idx = (uint8_t)((m.identifier - ID_CELL_BASE) / ID_CELL_STEP);
+    memcpy(cellFrm[idx], d, 8);
+    cellSeen[idx] = true;
+    cellAt = millis();
   }
 }
 
@@ -728,6 +755,29 @@ void sendState() {
            "\"rixfan\":0,\"rixfurn\":0,\"rixhw\":0,");
   if (seenTank) J("\"fresh\":%d,\"gray\":%d,", fwR ? fwL * 100 / fwR : 0, grR ? grL * 100 / grR : 0);
   else J("\"fresh\":null,\"gray\":null,");
+
+  {
+    // The sixteen candidate per-cell bytes are bytes 4..7 of the last four
+    // frames. Report them raw, plus the spread, which is the whole question:
+    // a spread that stays 0 while the pack is known to hold a collapsed cell
+    // proves these are not per-cell values.
+    bool cf = cellAt && (millis() - cellAt < CELL_STALE_MS);
+    J("\"cellfresh\":%d,\"cells\":[", cf ? 1 : 0);
+    int lo = 255, hi = 0;
+    for (int f = 2; f < ID_CELL_N; f++)
+      for (int b = 4; b < 8; b++) {
+        uint8_t v = cellFrm[f][b];
+        J("%s%u", (f == 2 && b == 4) ? "" : ",", v);
+        if (cellSeen[f]) { if (v < lo) lo = v; if (v > hi) hi = v; }
+      }
+    J("],\"cellspread\":%d,\"cellraw\":[", (lo <= hi) ? (hi - lo) : 0);
+    for (int f = 0; f < ID_CELL_N; f++) {
+      J("%s\"", f ? "," : "");
+      for (int b = 0; b < 8; b++) J("%02X", cellFrm[f][b]);
+      J("\"");
+    }
+    J("],");
+  }
 
   {
     // Temperature history: TEMP_BUCKETS entries, oldest first, in °F.
