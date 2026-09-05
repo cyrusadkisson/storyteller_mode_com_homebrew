@@ -136,17 +136,6 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 </div>
 </div>
 
-<details style="margin-top:20px">
-<summary class="sub" style="cursor:pointer;padding:6px 2px">Advanced</summary>
-<div class="card" style="margin-top:6px">
-<div class="row"><span class="name">Chart history
-<span class="sub">written to flash every 15 min and restored on the next boot,
-so a power swap costs at most the bucket in progress</span></span>
-<b id="lbstat">--</b></div>
-<div class="sub" id="lbnote" style="margin-top:6px"></div>
-</div>
-</details>
-
 <div id="foot"></div>
 <script>
 // --- switch rows ---------------------------------------------------------------
@@ -505,7 +494,8 @@ async function poll(){
         // inside the deadband, which reads as off-scale rather than as a fault.
         const row=document.getElementById("remhalfrow");
         const n=j.pwrwinN||0;
-        const wmin=Math.min(60,Math.round(n*5/60));
+        // Span from the board, not inferred from the sample count.
+        const wmin=(j.pwrwinMin!=null)?j.pwrwinMin:Math.min(60,Math.round(n*5/60));
         if(!j.windir){
           row.style.display="none";
         }else{
@@ -685,22 +675,6 @@ async function poll(){
           :"All sixteen equal. Cells diverge as the pack drains — near a full charge they genuinely are alike, so no spread here means little.");
       document.getElementById("cellraw").textContent=
         have&&j.cellraw?j.cellraw.join("\n"):"";
-    }
-    // Lifeboat status. No button: a manual save would stamp a newer time over
-    // unchanged data and understate the outage gap (see app.ino).
-    {
-      const st=document.getElementById("lbstat"), nt=document.getElementById("lbnote");
-      if(!j.lbok){
-        st.textContent="off";
-        nt.textContent="Filesystem unavailable — history is NOT being saved and will be lost on any power cycle.";
-      }else if(!j.lbsave){
-        st.textContent="waiting";
-        nt.textContent="Nothing written yet. The first save happens when the first 15-minute bucket completes.";
-      }else{
-        const d=new Date(j.lbsave*1000);
-        st.textContent=j.lbcount+" buckets";
-        nt.textContent="Last written "+d.toLocaleTimeString()+".";
-      }
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");

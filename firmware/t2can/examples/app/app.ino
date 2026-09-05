@@ -113,6 +113,12 @@ static uint16_t ptCnt = 0;
 static int16_t  pwrwin[PWRWIN_N];
 static uint16_t pwHead = 0, pwFill = 0;
 static uint32_t pwAt = 0;
+// millis() of the first sample. The row is gated on ELAPSED TIME from here,
+// not on a sample count: a count can only ever fall behind the clock -- a
+// dropped tick or a stale-battery moment is a sample never taken -- so a
+// count-gated row is guaranteed to appear after the 15-minute chart bar it is
+// supposed to sit beside. Both now key off the same 15 minutes.
+static uint32_t pwFirstMs = 0;
 static uint32_t tempLastSample = 0;
 // Die over 85 C (185 F) sustained for an hour latches a warning that survives
 // until the user dismisses it (client-side, keyed on hotAt). hotAt is the
@@ -372,8 +378,6 @@ static uint32_t lbPendingEpoch = 0;        // set by a restore, cleared by the s
 // week-old file, and committing early would display stale history as current
 // for however long it takes someone to open the app. Held here instead, and
 // applied -- or discarded as too old -- the moment the time is known.
-static uint32_t lbLastSave = 0;            // epoch of the last successful save
-static uint16_t lbLastCount = 0;           // buckets in it
 static int16_t  lbHeld[4][TEMP_BUCKETS];
 static bool     lbHave = false;
 static uint16_t lbHeldFilled = 0;
@@ -396,8 +400,10 @@ static int16_t *lbRing(int k) {
   }
 }
 
-static bool lbSave(char *msg, size_t msgLen) {
-  if (!lbMounted) { snprintf(msg, msgLen, "no filesystem"); return false; }
+// Nothing reports the result anywhere, so it returns a plain bool and builds
+// no message. The only caller is the bucket rotation.
+static bool lbSave() {
+  if (!lbMounted) return false;
   LbHdr h;
   h.magic = LB_MAGIC; h.ver = LB_VER; h.buckets = TEMP_BUCKETS;
   h.savedEpoch = nowEpoch(); h.filled = tempFilled; h.pad = 0;
@@ -405,20 +411,13 @@ static bool lbSave(char *msg, size_t msgLen) {
   for (int k = 0; k < 4; k++) h.sum ^= lbSum(lbRing(k), TEMP_BUCKETS);
 
   File f = SPIFFS.open(LB_PATH, FILE_WRITE);
-  if (!f) { snprintf(msg, msgLen, "could not open file"); return false; }
+  if (!f) return false;
   bool good = f.write((uint8_t *)&h, sizeof h) == sizeof h;
   for (int k = 0; k < 4 && good; k++)
     good = f.write((uint8_t *)lbRing(k), TEMP_BUCKETS * sizeof(int16_t)) ==
            TEMP_BUCKETS * sizeof(int16_t);
   f.close();
-  if (!good) { snprintf(msg, msgLen, "write failed"); return false; }
-  // Say plainly when there is nothing to protect. "saved 0 buckets" is true
-  // and reads like success, which is the one way this feature can quietly cost
-  // someone the data they were trying to keep.
-  lbLastSave = h.savedEpoch;
-  lbLastCount = tempFilled;
-  snprintf(msg, msgLen, "saved %u buckets", (unsigned)tempFilled);
-  return true;
+  return good;
 }
 
 static void lbRestore() {
@@ -1056,8 +1055,6 @@ void sendState() {
       cellBad ? 1 : 0, cellMinV, cellMinIdx + 1, cellFrm[0][7]);
     if (cellBad)
       J("\"cellbadago\":%lu,", (unsigned long)((millis() - cellBadAt) / 1000));
-    J("\"lbok\":%d,\"lbcount\":%u,\"lbsave\":%lu,",
-      lbMounted ? 1 : 0, (unsigned)lbLastCount, (unsigned long)lbLastSave);
     J("\"cellraw\":[");
     for (int f = 0; f < ID_CELL_N; f++) {
       J("%s\"", f ? "," : "");
@@ -1110,8 +1107,19 @@ void sendState() {
     // Mean power over the last 30 minutes, and the minutes remaining it
     // implies. Needs a few minutes of samples before it means anything.
     // Window grows 15m -> 1h; the UI derives the label from pwrwinN.
-    J("\"pwrwinN\":%u,", pwFill);
-    if (pwFill >= PWRWIN_MIN_FILL) {
+    // The window SPAN in minutes, capped at the ring's one hour. The UI used to
+    // derive this from the sample count, which understates a sparsely sampled
+    // window -- 120 samples over a real 15 minutes would have read "10m".
+    {
+      uint32_t spanMin = pwFirstMs ? ((millis() - pwFirstMs) / 60000UL) : 0;
+      if (spanMin > 60) spanMin = 60;
+      J("\"pwrwinN\":%u,\"pwrwinMin\":%lu,", pwFill, (unsigned long)spanMin);
+    }
+    // Ready once the window SPANS 15 minutes, however many samples landed in
+    // it. A sparse window is a noisier mean, not a shorter one, and it beats
+    // hiding the row indefinitely because the bus dropped frames.
+    bool pwReady = pwFirstMs && (millis() - pwFirstMs) >= PWRWIN_MS * PWRWIN_MIN_FILL;
+    if (pwReady && pwFill > 0) {
       float sum = 0;
       for (uint16_t i = 0; i < pwFill; i++) sum += pwrwin[i];
       float avgW = sum / pwFill;
@@ -1366,8 +1374,14 @@ void tempTick() {
     logWrite(4, "pulse");
   }
   if ((uint32_t)(now - pwAt) >= PWRWIN_MS) {
-    pwAt = now;
+    // Advance by the interval rather than snapping to now. Snapping discards
+    // the leftover every time the loop runs late, so the ring fell behind the
+    // wall clock a little on every lap and never caught up. The bucket
+    // rotation below has always done it this way; this did not.
+    pwAt += PWRWIN_MS;
+    if ((uint32_t)(now - pwAt) > PWRWIN_MS * 4) pwAt = now;   // long stall: resync
     if (seenBatt && (uint32_t)(now - battAt) < BATT_STALE_MS) {
+      if (!pwFirstMs) pwFirstMs = now;
       pwrwin[pwHead] = (int16_t)(battV * battA);
       pwHead = (pwHead + 1) % PWRWIN_N;
       if (pwFill < PWRWIN_N) pwFill++;
@@ -1466,7 +1480,7 @@ void tempTick() {
     // moment there is something new to keep. Removes the "did I remember to
     // press save" failure entirely -- an unexpected power loss now costs at
     // most the bucket in progress.
-    { char m[128]; lbSave(m, sizeof m); }
+    lbSave();
   }
 }
 
