@@ -111,7 +111,7 @@ diagnostics (DM1/DM2/DM3).
 
 ---
 
-## Cell monitor (SA `0x8E`) — structure identified, mapping UNCONFIRMED
+## Cell monitor (SA `0x8E`) — per-cell, CONFIRMED 2026-09-05
 
 Six frames, `0x18FF918E` … `0x18FF968E`, all sharing a three-byte prefix:
 
@@ -135,28 +135,21 @@ Proposed scaling: **cell V = 2.00 + byte/100**, so `0x84` = 132 → **3.32 V**.
 Sixteen of those gives 53.1 V, against **53.20 V** decoded independently from
 `DC_SOURCE_STATUS_1`. Agreement to within rounding, by two unrelated routes.
 
-`0x18FF918E` and `0x18FF928E` have a different shape (values `4E`/`4F` = 78/79
-among the 132s) and are probably min/max/average plus temperatures.
+`0x18FF918E` and `0x18FF928E` have a different shape. **`0x18FF918E` byte 7 is
+now confirmed as the LOWEST cell voltage** (see below); bytes 5 and 6 are the
+highest and the average in some order, not yet separated.
 
-> **This mapping is NOT confirmed — and confidence went DOWN on 2026-08-12.**
+> **RESOLVED 2026-09-05: they are per-cell values.** The doubt is kept here
+> because how it resolved is worth remembering.
 >
-> At 62 % SOC under a 1.4 kW load, the **phone app showed a mix of 3.25 V and
-> 3.26 V across the pack, while all sixteen bus bytes read an identical
-> `0x7D`.** The bus did not reproduce a spread the app could see.
+> On 2026-08-12, at 62 % SOC under a 1.4 kW load, the phone app showed a mix of
+> 3.25 V and 3.26 V while all sixteen bus bytes read an identical `0x7D`. Two
+> explanations fitted equally: 0.01 V truncation hiding a 0.01 V spread, or the
+> sixteen bytes being one aggregate replicated sixteen times. **A one-count
+> spread cannot separate those**, so the question stayed open — correctly.
 >
-> Two explanations, and they are not equally comfortable:
->
-> 1. **Resolution.** The field is 0.01 V per count and truncates, so cells at
->    3.254 and 3.256 land on the same byte. Consistent with pack voltage of
->    52.20 V = 3.2625 V/cell, right on the rounding boundary.
-> 2. **These may not be per-cell values at all.** A min/max/average replicated
->    across the frame would produce data indistinguishable from what we have.
->    **These sixteen bytes have never once been observed differing from each
->    other**, at any state of charge.
->
-> Until they are seen to diverge, "sixteen cells" remains a structural guess
-> supported only by the count byte (`0x10` = 16) and by sixteen × the decoded
-> value landing near pack voltage.
+> It needed a cell far enough from its neighbours that truncation could not be
+> the explanation. Cell 9 eventually provided one. See the capture below.
 
 **Cell 9 has collapsed — CONFIRMED 2026-09-04.** An earlier drawn-down test
 (2026-08-12) showed cell 9 in line with the rest of the pack, and this document
@@ -192,36 +185,61 @@ really do contain.
 
 Usable capacity is now set by cell 9 alone, not by the 138 Ah the app reports.
 
-### The bus cannot see this — and it decides the mapping question
+### The capture that settled it (2026-09-05)
 
-The gap between cell 9 and the rest of the pack is **0.33 V = 33 counts** at the
-frame's 0.01 V per count. That is thirty-three times the field resolution —
-nowhere near the rounding boundary that explanation 1 above rests on.
+Taken live off CAN2 by the companion board, with cell 9 depressed and the
+Lithionics app open beside it at the same moment:
 
-That makes the two explanations separable by a single capture: **record
-`0x18FF938E`–`0x18FF968E` while cell 9 is this far down.** Sixteen identical
-bytes, with a 33-count spread demonstrably present in the pack, proves
-explanation 2 — the frame carries a replicated min/max/average and not per-cell
-values — and retires the "sixteen cells" reading for good. *This capture has not
-been taken yet; it is the one open item on this node.*
+```
+01 02 10 00 45 7D 7D 7B     0x18FF918E
+01 02 10 40 00 00 47 84     0x18FF928E
+01 02 10 00 7D 7D 7D 7D     0x18FF938E   cells  1-4
+01 02 10 00 7D 7D 7D 7D     0x18FF948E   cells  5-8
+01 02 10 00 7B 7D 7D 7D     0x18FF958E   cells  9-12   <- 0x7B
+01 02 10 00 7D 7D 7D 7D     0x18FF968E   cells 13-16
+```
 
-**The companion board now captures all six `0x8E` frames raw (2026-09-04)** and
-the app shows the sixteen bytes, their spread in counts, and the raw payloads,
-under "Cell monitor (mapping unconfirmed)". Nothing is decoded into state: a
-guess baked into the capture would destroy the evidence it exists to collect.
-The spread is the answer — if it stays 0 while the pack is known to hold a cell
-0.33 V down, these are not per-cell values. Watch it during the next drawdown;
-at full charge the cells genuinely are alike and a zero spread proves nothing.
+`0x7B` = 123 → **3.23 V**; `0x7D` = 125 → **3.25 V**. The app read cell 9 at
+3.23 V and the other fifteen at 3.25 V. Four results from one capture:
 
-Formally the mapping stays unconfirmed until then. Practically, the conclusion
-already holds: **every per-cell fault this pack has produced has been invisible
-on CAN2 and visible only over Bluetooth in the Lithionics app.** A parallel tap
-cannot decode its way to cell health, and the companion app therefore cannot
-warn on it directly — see the voltage/SOC disagreement warning below, which is
-the closest available proxy.
+| result | how it follows |
+|---|---|
+| The sixteen bytes are **per-cell values** | one byte differs from the other fifteen — a replicated aggregate cannot do that |
+| Scaling **cell V = 2.00 + byte/100** is right | 123 → 3.23 and 125 → 3.25 reproduce the app exactly, by an independent route |
+| Frame→cell **ordering** is as proposed | the odd byte is `958E` byte 4, and cell 9 is the known low cell |
+| **`0x18FF918E` byte 7 = lowest cell voltage** | it reads `0x7B` (3.23) while bytes 5-6 read `0x7D` (3.25), against the app's Lowest 3.23 / Highest 3.25 / Average 3.25 |
 
-**Standing practice (manual):** the per-cell screen in the Lithionics phone app
-is the only place a failing cell is visible. Check it after any shutdown.
+**Byte 7 of `0x18FF918E` is the operationally useful one.** It is the minimum
+cell voltage, in one byte, broadcast continuously — and it is the quantity the
+BMS actually opens the contactor on. Watching a failing cell does not require
+scanning sixteen bytes; it requires watching one.
+
+Bytes 5 and 6 both read `0x7D` in this capture, matching Highest and Average
+alike, so **which is which is not yet separated.** They diverge whenever the pack
+is less uniform than this.
+
+Still undecoded on this node: `0x18FF918E` byte 4 (`0x45` = 69 here, against
+`0x4E`/`0x4F` = 78/79 in the older 3.32 V captures — it moves with the pack but
+not proportionally, so a temperature is plausible and unproven), and most of
+`0x18FF928E`, whose byte 3 read `0x40` against the app's "Last Code 40".
+
+### This overturns an earlier conclusion in this document
+
+Until today this file stated that per-cell faults on this pack are invisible on
+CAN2 and visible only over Bluetooth, and that a parallel tap "cannot decode its
+way to cell health". **That was wrong.** It was a reasonable reading of the
+evidence available — sixteen bytes that had never once been seen to differ — but
+the evidence was simply not yet decisive, and it was stated far more firmly than
+that warranted.
+
+The voltage/SoC disagreement warning was built on that assumption. It still
+works, and it stays: it needs only frames the app already decodes. But it is now
+the *inferior* signal — an inference about a cell, where the bus reports the cell
+directly.
+
+**Standing practice, updated:** the phone app is no longer the only place a
+failing cell is visible. `0x18FF918E` byte 7 carries it, and the companion board
+already captures the frame.
 
 ---
 

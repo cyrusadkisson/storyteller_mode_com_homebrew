@@ -45,7 +45,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .dimtbl td.nm{white-space:nowrap}
 .dimtbl td.bt{width:74px}
 .dimtbl button{width:100%;min-width:0;padding:9px 6px;font-size:14px}
-.qual{font-size:11px;color:#77838f}
+.qual{font-size:13px;color:var(--mut)}
 .warn{font-size:13px;color:#e0a458;background:#2a2318;border-radius:8px;padding:8px;margin-bottom:6px}
 .stale{opacity:.45}
 .ph{font-size:13px;color:var(--mut);font-style:italic;padding:2px 2px 6px;text-align:center}
@@ -59,6 +59,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
 
 <h2>Battery &amp; Power</h2><div class="card">
+<div id="cellwarn" class="warn" style="display:none"></div>
 <div id="vsocwarn" class="warn" style="display:none"></div>
 <div class="row"><span class="name">State of charge</span>
 <span><b id="socpct">--</b></span><span class="bar"><div id="socbar" class="gr"></div></span></div>
@@ -85,7 +86,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <span><button id="comp">off</button></span></div>
 <div class="row sub2" id="acfanrow" style="display:none"><span class="name">Fan</span>
 <span><button id="cf0">Auto</button> <button id="cf1">Low</button> <button id="cf2">High</button></span></div>
-<div class="row sub2"><span class="name">Cool setpoint</span>
+<div class="row sub2"><span class="name">Temp setpoint</span>
 <span><button id="cooldn">&minus;</button> <b id="coolsp">--</b> <button id="coolup">+</button></span></div>
 <div class="row"><span class="name">Cabin temp</span><b id="tempin">--</b></div>
 <div id="ambchart" style="overflow-x:auto"></div>
@@ -119,8 +120,9 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
-<h2>Cell monitor <span class="sub" style="text-transform:none;letter-spacing:0">(mapping unconfirmed)</span></h2><div class="card">
-<div class="row"><span class="name">Spread across the 16 bytes</span><b id="cellspread">--</b></div>
+<h2>Cell monitor</h2><div class="card">
+<div class="row"><span class="name">Lowest cell</span><b id="celllow">--</b></div>
+<div class="row"><span class="name">Spread across the pack</span><b id="cellspread">--</b></div>
 <div id="cellgrid" class="sub" style="font-family:monospace;white-space:pre;overflow-x:auto"></div>
 <div class="sub" id="cellnote" style="margin-top:8px"></div>
 <div class="sub" id="cellraw" style="font-family:monospace;white-space:pre;overflow-x:auto;font-size:11px;margin-top:8px;opacity:.6"></div>
@@ -622,22 +624,53 @@ async function poll(){
     // and are shown only as a convenience -- the raw bytes below them are the
     // evidence, and the spread is the answer. Nothing here is treated as fact.
     {
+      // Confirmed per-cell on 2026-09-05: one byte read 0x7B against fifteen
+      // 0x7D, matching the phone app exactly (docs/energy-can2.md). So this
+      // section reports the WEAKEST CELL rather than debating what the bytes
+      // are -- the BMS opens the contactor on the weakest cell, never on the
+      // pack average, which is the whole reason this van dies at 80 % showing.
       const cs=j.cells||[];
+      let lo=999,hi=-1,loI=-1;
+      cs.forEach((v,i)=>{ if(v<lo){lo=v;loI=i;} if(v>hi)hi=v; });
+      const have=j.cellfresh&&cs.length&&loI>=0;
+      // The weak-cell banner sits at the top of the battery card, above the
+      // V/SoC proxy: this is the condition that actually opens the contactor.
+      {
+        const cw=document.getElementById("cellwarn");
+        if(j.cellbad&&have){
+          const ago=j.cellbadago||0;
+          const h=Math.floor(ago/3600), m=Math.floor((ago%3600)/60);
+          cw.textContent=
+            `Warning: cell ${loI+1} is at ${(2+lo/100).toFixed(2)}V, `+
+            `${(j.cellspread/100).toFixed(2)}V below the strongest cell. The BMS opens the `+
+            `contactor on this cell alone — expect a total power loss while the gauge `+
+            `still reads a useful charge. Started ${h}h ${m}m ago.`;
+          cw.style.display="block";
+        } else cw.style.display="none";
+      }
+      document.getElementById("celllow").textContent=
+        have?("c"+(loI+1)+"  "+(2+lo/100).toFixed(2)+"V"):"--";
       document.getElementById("cellspread").textContent=
-        j.cellfresh?((j.cellspread/100).toFixed(2)+"V  ("+j.cellspread+" counts)"):"--";
+        have?((j.cellspread/100).toFixed(2)+"V  ("+j.cellspread+" counts)"):"--";
       let g="";
       cs.forEach((v,i)=>{
-        g+=(i%4===0?(i?"\n":""):"   ")+
-           ("c"+(i+1)).padStart(3," ")+" "+(2+v/100).toFixed(2);
+        // Mark the low cell. With a failing cell in this pack, WHICH one is
+        // lowest matters more than any of the sixteen values.
+        const mark=(have&&i===loI&&j.cellspread>0)?"*":" ";
+        g+=(i%4===0?(i?"\n":""):"  ")+
+           mark+("c"+(i+1)).padStart(3," ")+" "+(2+v/100).toFixed(2);
       });
-      document.getElementById("cellgrid").textContent=j.cellfresh?g:"";
+      document.getElementById("cellgrid").textContent=have?g:"";
       document.getElementById("cellnote").textContent=
-        !j.cellfresh?"No cell monitor frames on CAN2.":
+        !have?"No cell monitor frames on CAN2.":
         (j.cellspread>0
-          ?"These bytes DIVERGED — they carry real per-cell values. Record this: it settles the open question in docs/energy-can2.md."
-          :"All sixteen identical, as in every capture so far. Consistent with one aggregate replicated sixteen times rather than per-cell values. The test only means something while a cell is actually depressed — at a full charge the cells really are alike.");
+          ?("c"+(loI+1)+" is "+(j.cellspread/100).toFixed(2)+
+            "V below the highest cell. A gap that grows as the pack drains is the "+
+            "shutdown signature: the BMS trips on this cell while the gauge still "+
+            "reports what the other fifteen hold.")
+          :"All sixteen equal. Cells diverge as the pack drains — near a full charge they genuinely are alike, so no spread here means little.");
       document.getElementById("cellraw").textContent=
-        j.cellfresh&&j.cellraw?j.cellraw.join("\n"):"";
+        have&&j.cellraw?j.cellraw.join("\n"):"";
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");

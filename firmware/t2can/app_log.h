@@ -5,7 +5,9 @@
 // power loss; the last entries bound WHEN it died, and each pulse carries
 // pack voltage/current so the trend into a death is recorded. Entry types:
 // 1 boot, 2 cmd-before, 3 cmd-after, 4 pulse, 5 voltage/SoC disagreement
-// tripped, 6 that disagreement cleared. Actions log before AND after;
+// tripped, 6 that disagreement cleared, 7 weak cell (the cmd field carries the
+// cell number and its raw byte, e.g. "c9 123"), 8 weak cell recovered.
+// Actions log before AND after;
 // a 2 without a 3 means death mid-action.
 #include <Preferences.h>
 
@@ -87,8 +89,8 @@ static void logInit() {
 }
 
 static String logDump() {
-  const char *tn[7] = {"?", "BOOT", "CMD>", "CMD OK", "pulse",
-                       "VSOC!", "VSOC ok"};
+  const char *tn[9] = {"?", "BOOT", "CMD>", "CMD OK", "pulse",
+                       "VSOC!", "VSOC ok", "CELL!", "CELL ok"};
   String out;
   LogE chunk[LOGCHUNK];
   uint32_t loaded = 0xFFFFFFFFUL;               // which key `chunk` holds
@@ -101,7 +103,7 @@ static String logDump() {
     char ln[128];
     snprintf(ln, sizeof ln, "%08lu  %8lums  %-7s  %5.2fV %6.1fA  %s\n",
              (unsigned long)e.seq, (unsigned long)e.ms,
-             tn[e.type <= 6 ? e.type : 0], e.vCenti / 100.0f, e.aDeci / 10.0f,
+             tn[e.type <= 8 ? e.type : 0], e.vCenti / 100.0f, e.aDeci / 10.0f,
              e.cmd);
     out += ln;
   }

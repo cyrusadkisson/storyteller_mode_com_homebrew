@@ -228,6 +228,46 @@ static uint32_t battTAt = 0;
 static uint8_t  cellFrm[ID_CELL_N][8];     // raw, exactly as received
 static bool     cellSeen[ID_CELL_N];
 static uint32_t cellAt = 0;
+
+// Weak-cell watch. CONFIRMED 2026-09-05 that the sixteen bytes are per-cell
+// (docs/energy-can2.md), which makes this the DIRECT signal that the voltage/
+// SoC disagreement warning was only ever a proxy for: the BMS opens the
+// contactor on the weakest cell, never on the pack average, which is why this
+// van dies while the gauge still reads 80 %.
+//
+// Thresholds are in byte counts, not volts, because that is what the wire
+// carries: cell V = 2.00 + byte/100, so byte 100 = 3.00 V. Two independent
+// conditions, either of which warns:
+//   LOW    -- the weakest cell is approaching the BMS undervoltage floor.
+//   SPREAD -- one cell is separating from the pack. A healthy pack sits within
+//             1-2 counts; cell 9 read 35 counts down with the system dead.
+// Separate trip and clear values so a pack sitting on a threshold cannot flap.
+#define CELL_LOW_TRIP      100     // 3.00 V
+#define CELL_LOW_CLEAR     105     // 3.05 V
+#define CELL_SPREAD_TRIP    10     // 0.10 V
+#define CELL_SPREAD_CLEAR    7     // 0.07 V
+static bool     cellBad = false;
+static uint32_t cellBadAt = 0;
+static uint8_t  cellMinV = 0, cellMinIdx = 0, cellSpreadV = 0;
+
+// Fills the stats from the four per-cell frames. False unless ALL four are
+// present and fresh -- a spread computed from half the pack is not a spread.
+static bool cellStats() {
+  if (!cellAt || (millis() - cellAt) >= CELL_STALE_MS) return false;
+  int lo = 255, hi = 0, li = 0;
+  for (int f = 2; f < ID_CELL_N; f++) {
+    if (!cellSeen[f]) return false;
+    for (int b = 4; b < 8; b++) {
+      uint8_t v = cellFrm[f][b];
+      if (v < lo) { lo = v; li = (f - 2) * 4 + (b - 4); }
+      if (v > hi) hi = v;
+    }
+  }
+  cellMinV = (uint8_t)lo;
+  cellMinIdx = (uint8_t)li;
+  cellSpreadV = (uint8_t)(hi - lo);
+  return true;
+}
 // Voltage/SoC disagreement. A pack reading low while the gauge still reads
 // high means a CELL is near its floor, not that the pack is empty -- the BMS
 // protects per cell, so it opens the contactor on that one cell while the pack
@@ -770,7 +810,16 @@ void sendState() {
         J("%s%u", (f == 2 && b == 4) ? "" : ",", v);
         if (cellSeen[f]) { if (v < lo) lo = v; if (v > hi) hi = v; }
       }
-    J("],\"cellspread\":%d,\"cellraw\":[", (lo <= hi) ? (hi - lo) : 0);
+    J("],\"cellspread\":%d,", (lo <= hi) ? (hi - lo) : 0);
+    // cellrep is the BMS's OWN lowest-cell field (0x18FF918E byte 7), kept
+    // beside our minimum of the sixteen as a cross-check. They should agree;
+    // if they ever do not, one of the two decodes is wrong and we want to see
+    // it rather than average it away.
+    J("\"cellbad\":%d,\"cellmin\":%d,\"cellminc\":%d,\"cellrep\":%d,",
+      cellBad ? 1 : 0, cellMinV, cellMinIdx + 1, cellFrm[0][7]);
+    if (cellBad)
+      J("\"cellbadago\":%lu,", (unsigned long)((millis() - cellBadAt) / 1000));
+    J("\"cellraw\":[");
     for (int f = 0; f < ID_CELL_N; f++) {
       J("%s\"", f ? "," : "");
       for (int b = 0; b < 8; b++) J("%02X", cellFrm[f][b]);
@@ -1106,6 +1155,27 @@ void tempTick() {
     } else if (vsocBad && (battV > VSOC_V_CLEAR || socNow <= VSOC_SOC_MIN)) {
       vsocBad = false;
       logWrite(6, "vsoc ok");
+    }
+  }
+  // Weak cell. Evaluated here for the same reason as the V/SoC watch: it has to
+  // catch a shutdown that happens with nobody looking. The log entry carries
+  // the cell number and its raw byte, so the forensics say WHICH cell went.
+  if (cellStats()) {
+    bool bad = (cellMinV < CELL_LOW_TRIP) || (cellSpreadV >= CELL_SPREAD_TRIP);
+    bool fine = (cellMinV > CELL_LOW_CLEAR) && (cellSpreadV <= CELL_SPREAD_CLEAR);
+    if (!cellBad && bad) {
+      cellBad = true;
+      cellBadAt = now;
+      // Roomy enough that snprintf cannot truncate (the compiler cannot prove
+      // the bounds on these); logWrite copies the first 7 chars into cmd[8],
+      // and the longest real value, "c16 255", is exactly 7.
+      char msg[16];
+      snprintf(msg, sizeof msg, "c%u %u", (unsigned)(cellMinIdx + 1),
+               (unsigned)cellMinV);
+      logWrite(7, msg);
+    } else if (cellBad && fine) {
+      cellBad = false;
+      logWrite(8, "cell ok");
     }
   }
   if ((uint32_t)(now - tempHourStart) >= 900000UL) {   // 15-minute buckets
