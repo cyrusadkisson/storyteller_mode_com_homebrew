@@ -10,6 +10,7 @@
 // Actions log before AND after;
 // a 2 without a 3 means death mid-action.
 #include <Preferences.h>
+#include <time.h>                    // gmtime_r, for dating entries
 
 // ---------------------------------------------------------------------------
 // SIZING -- one entry per NVS key does NOT fit. Writes began failing with
@@ -32,12 +33,22 @@
 #define LOGN 192                     // ~16 h of 5-min pulses, less with traffic
 #define LOGCHUNK 8                   // entries packed into one NVS key
 #define LOGKEYS (LOGN / LOGCHUNK)
-#define LOGVER 2                     // bump to discard an incompatible layout
+#define LOGVER 3                     // bump to discard an incompatible layout
 
+// epoch/bootId added in v3. The board has no clock of its own: it learns the
+// time from the phone (see the wall clock note in app.ino), so `epoch` is 0 for
+// any entry written before a phone had connected. Such an entry is still
+// datable AFTER the fact -- ms is an offset from a boot whose wall-clock moment
+// we may since have learned -- which is what bootId is for: it says which run
+// the offset belongs to, so this session's undated entries resolve while an
+// older session's honestly fall back to milliseconds.
+//
+// 28 bytes x 8 = a 224-byte chunk: index + header + 7 data entries = 9 NVS
+// entries per key, 24 keys = 216 of the ~504 available. Still comfortable.
 struct __attribute__((packed)) LogE {
-  uint32_t seq; uint32_t ms; uint8_t type; uint8_t pad;
-  uint16_t vCenti; int16_t aDeci; char cmd[8];
-};                                   // 24 bytes
+  uint32_t seq; uint32_t ms; uint32_t epoch; uint8_t type; uint8_t pad;
+  uint16_t vCenti; int16_t aDeci; uint16_t bootId; char cmd[8];
+};                                   // 28 bytes
 
 static Preferences vlog;
 static uint32_t logSeq = 0;
@@ -56,6 +67,8 @@ static void logChunkRead(uint32_t key, LogE *chunk) {
 static void logWrite(uint8_t type, const char *cmd) {
   LogE e;
   e.seq = ++logSeq; e.ms = millis(); e.type = type; e.pad = 0;
+  e.epoch = nowEpoch();              // 0 until a phone has supplied the time
+  e.bootId = bootId;
   e.vCenti = (uint16_t)(battV * 100.0f);
   e.aDeci = (int16_t)(battA * 10.0f);
   memset(e.cmd, 0, sizeof e.cmd);
@@ -100,9 +113,26 @@ static String logDump() {
     if (key != loaded) { logChunkRead(key, chunk); loaded = key; }
     const LogE &e = chunk[slot % LOGCHUNK];
     if (e.seq == 0) continue;                   // never written
+    // Resolve the date late where we can: an entry written before the phone
+    // connected carries epoch 0, but if it belongs to THIS run its ms offset
+    // plus the boot moment we have since learned gives the real time. An entry
+    // from an earlier run cannot be resolved and says so by showing ms.
+    uint32_t ep = e.epoch;
+    if (!ep && bootEpoch && e.bootId == bootId) ep = bootEpoch + e.ms / 1000;
+    char when[40];   // roomy: the compiler cannot bound tm_year
+    if (ep) {
+      time_t t = (time_t)ep;
+      struct tm tmv;
+      gmtime_r(&t, &tmv);
+      snprintf(when, sizeof when, "%04d-%02d-%02d %02d:%02d:%02dZ",
+               tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
+               tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+    } else {
+      snprintf(when, sizeof when, "     %8lums", (unsigned long)e.ms);
+    }
     char ln[128];
-    snprintf(ln, sizeof ln, "%08lu  %8lums  %-7s  %5.2fV %6.1fA  %s\n",
-             (unsigned long)e.seq, (unsigned long)e.ms,
+    snprintf(ln, sizeof ln, "%08lu  %-20s  %-7s  %5.2fV %6.1fA  %s\n",
+             (unsigned long)e.seq, when,
              tn[e.type <= 8 ? e.type : 0], e.vCenti / 100.0f, e.aDeci / 10.0f,
              e.cmd);
     out += ln;

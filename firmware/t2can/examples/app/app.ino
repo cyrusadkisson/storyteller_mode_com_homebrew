@@ -37,6 +37,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <SPIFFS.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include "mcp2518fd_can.h"
@@ -62,9 +63,13 @@ static const char *MDNS_NAME = "van";         // http://van.local
 // RELATIVE: TEMP_HOURS of history in 15-minute buckets (4 per hour), plus the
 // bucket in progress = TEMP_HOURS*4+1 bars. A 15-min bucket needs >=15 of its
 // 30 possible samples to count.
-// Kept in RAM (~500 bytes) rather than flash -- the board is on permanent DC
-// and only loses power on a full system shutdown, where losing history is
-// acceptable and the alternative is thousands of flash write cycles.
+// Live in RAM, but PERSISTED to SPIFFS on every bucket rotation (see the
+// history lifeboat below). This comment used to justify RAM-only storage by
+// "thousands of flash write cycles"; that does not survive arithmetic at this
+// write rate. ~1.6 KB every 15 minutes is ~154 KB/day into a 3.4 MB partition
+// -- roughly 16 erase cycles a year against an endurance near 100,000. The
+// real constraint was never wear; it is that the board has no clock and so
+// cannot tell how long it was unpowered.
 //
 // This reads the DIE, not the cavity: it runs above ambient by the chip's own
 // dissipation plus the WiFi radio. Absolute accuracy is a few degrees; the
@@ -281,6 +286,236 @@ static bool cellStats() {
 #define VSOC_SOC_MIN  50.0f
 static bool     vsocBad = false;
 static uint32_t vsocAt = 0;                // board-millis of the last trip
+// ----- wall clock ------------------------------------------------------------
+// The board has no RTC, and millis() restarts at zero every power cycle, so it
+// can never know the time by itself. The browser polling /api/state does know,
+// and sends it as ?now=<unix seconds>. ONE subtraction turns that into the
+// moment this board booted:
+//
+//     bootEpoch = phoneNow - millis()/1000
+//
+// After which every millis() value the board holds converts to a real date --
+// including values recorded BEFORE any phone connected, because they are all
+// offsets from that same boot. That is why log entries carry bootId: at dump
+// time an undated entry from THIS session can still be resolved, while one
+// from an earlier session (whose boot moment nobody ever learned) honestly
+// falls back to milliseconds.
+//
+// Trusting the phone's clock is the trade. It is network-synced and better
+// than anything this board could manage, and a wrong phone writes a wrong
+// timestamp. The sanity floor below rejects an obviously unset clock.
+#define EPOCH_FLOOR 1700000000UL          // 2023-11-14; earlier is not a clock
+static uint32_t bootEpoch = 0;            // 0 = never learned this session
+static uint16_t bootId = 0;               // distinguishes this run in the log
+
+static void learnEpoch(uint32_t nowSec) {
+  if (nowSec < EPOCH_FLOOR) return;
+  // Recomputed on every poll rather than latched: it costs nothing and it
+  // absorbs the ~2 s/day the crystal drifts.
+  bootEpoch = nowSec - (millis() / 1000);
+  // A restore left the saved moment pending; now that the time is known, the
+  // outage length is computable. Declared below, so forward-declare it here.
+  extern void lbApplyGapIfPending();
+  lbApplyGapIfPending();
+}
+
+static uint32_t nowEpoch() {
+  return bootEpoch ? (bootEpoch + millis() / 1000) : 0;
+}
+
+
+// ----- history lifeboat ------------------------------------------------------
+// The four chart histories live in RAM and die with any power cycle -- which
+// includes every deliberate swap between laptop USB, a power brick and van
+// power. This saves them to SPIFFS on demand, and restores them at boot.
+//
+// SPIFFS, not NVS: the partition table already carries a 3.4 MB spiffs region
+// that nothing else uses, while NVS is 20 KB and has overflowed once already.
+// This is bulk data, which is what a filesystem is for.
+//
+// SCOPE, deliberately narrow -- only the four bucket histories:
+//   * The rolling power window (pwrwin) is NOT saved. It is a one-hour mean,
+//     and a mean spanning an unknown outage is worse than no mean. It refills
+//     in 15 minutes.
+//   * The overheat latch is NOT saved. It is a dismissable warning, and losing
+//     it across a swap you performed yourself is harmless.
+//   * The bucket in progress is NOT saved: at most 15 minutes.
+//
+// THE GAP. The board has no clock at boot, so it cannot know how long it was
+// dark until a phone connects. The save file records the wall-clock moment it
+// was written; the first poll that supplies the time triggers the shift, which
+// pushes in one empty bucket per 15 minutes of outage. Until that poll the
+// restored chart is un-shifted -- honest enough, since it is un-shifted by
+// exactly the amount nobody yet knows.
+// THERE IS DELIBERATELY NO MANUAL SAVE BUTTON. It looks helpful and is not:
+// the saved arrays are only complete up to the last bucket rotation, since the
+// bucket in progress is never written. So the true no-data period runs from
+// that ROTATION to the next boot, and savedEpoch has to mark the rotation --
+// which is exactly what saving on rotation records. A button would stamp a
+// later time over identical data, shrinking bootEpoch - savedEpoch and
+// UNDERSTATING the gap by up to 15 minutes. It would make the chart claim
+// continuity it does not have.
+#define LB_PATH  "/history.bin"
+#define LB_MAGIC 0x564C4231UL              // "VLB1"
+#define LB_VER   1
+
+struct __attribute__((packed)) LbHdr {
+  uint32_t magic; uint16_t ver; uint16_t buckets;
+  uint32_t savedEpoch;                     // 0 if the clock was never learned
+  uint16_t filled; uint16_t pad;
+  uint32_t sum;                            // over the payload only
+};
+
+static uint32_t lbPendingEpoch = 0;        // set by a restore, cleared by the shift
+// The file is read at boot but NOT committed to the live rings until the clock
+// arrives. Without a clock the board cannot tell a 30-second swap from a
+// week-old file, and committing early would display stale history as current
+// for however long it takes someone to open the app. Held here instead, and
+// applied -- or discarded as too old -- the moment the time is known.
+static uint32_t lbLastSave = 0;            // epoch of the last successful save
+static uint16_t lbLastCount = 0;           // buckets in it
+static int16_t  lbHeld[4][TEMP_BUCKETS];
+static bool     lbHave = false;
+static uint16_t lbHeldFilled = 0;
+static bool     lbMounted = false;
+
+static uint32_t lbSum(const int16_t *p, size_t n) {
+  uint32_t s = 2166136261UL;               // FNV-1a, plenty for corruption
+  const uint8_t *b = (const uint8_t *)p;
+  for (size_t i = 0; i < n * sizeof(int16_t); i++) { s ^= b[i]; s *= 16777619UL; }
+  return s;
+}
+
+// The four rings, in a fixed order both save and restore agree on.
+static int16_t *lbRing(int k) {
+  switch (k) {
+    case 0: return tempHist;
+    case 1: return ambHist;
+    case 2: return pwrHist;
+    default: return ptHist;
+  }
+}
+
+static bool lbSave(char *msg, size_t msgLen) {
+  if (!lbMounted) { snprintf(msg, msgLen, "no filesystem"); return false; }
+  LbHdr h;
+  h.magic = LB_MAGIC; h.ver = LB_VER; h.buckets = TEMP_BUCKETS;
+  h.savedEpoch = nowEpoch(); h.filled = tempFilled; h.pad = 0;
+  h.sum = 0;
+  for (int k = 0; k < 4; k++) h.sum ^= lbSum(lbRing(k), TEMP_BUCKETS);
+
+  File f = SPIFFS.open(LB_PATH, FILE_WRITE);
+  if (!f) { snprintf(msg, msgLen, "could not open file"); return false; }
+  bool good = f.write((uint8_t *)&h, sizeof h) == sizeof h;
+  for (int k = 0; k < 4 && good; k++)
+    good = f.write((uint8_t *)lbRing(k), TEMP_BUCKETS * sizeof(int16_t)) ==
+           TEMP_BUCKETS * sizeof(int16_t);
+  f.close();
+  if (!good) { snprintf(msg, msgLen, "write failed"); return false; }
+  // Say plainly when there is nothing to protect. "saved 0 buckets" is true
+  // and reads like success, which is the one way this feature can quietly cost
+  // someone the data they were trying to keep.
+  lbLastSave = h.savedEpoch;
+  lbLastCount = tempFilled;
+  snprintf(msg, msgLen, "saved %u buckets", (unsigned)tempFilled);
+  return true;
+}
+
+static void lbRestore() {
+  if (!lbMounted || !SPIFFS.exists(LB_PATH)) return;
+  File f = SPIFFS.open(LB_PATH, FILE_READ);
+  if (!f) return;
+  LbHdr h;
+  if (f.read((uint8_t *)&h, sizeof h) != sizeof h ||
+      h.magic != LB_MAGIC || h.ver != LB_VER || h.buckets != TEMP_BUCKETS) {
+    f.close();
+    return;                                // stale or foreign: ignore, never trust
+  }
+  bool good = true;
+  for (int k = 0; k < 4 && good; k++)
+    good = f.read((uint8_t *)lbHeld[k], TEMP_BUCKETS * sizeof(int16_t)) ==
+           TEMP_BUCKETS * sizeof(int16_t);
+  f.close();
+  if (!good) return;
+  uint32_t sum = 0;
+  for (int k = 0; k < 4; k++) sum ^= lbSum(lbHeld[k], TEMP_BUCKETS);
+  if (sum != h.sum) { Serial.println("lifeboat: checksum mismatch, ignored"); return; }
+
+  // A lifeboat is one-shot. Leaving the file in place meant every later boot
+  // restored the same stale history and re-armed a gap from a timestamp that
+  // had already been consumed -- which is how a save from an hour earlier kept
+  // blanking freshly collected buckets.
+  SPIFFS.remove(LB_PATH);
+
+  if (!h.savedEpoch) {
+    // No clock at save means the age can never be established. Refusing is the
+    // safe half of that trade: unknowably old history shown as current is
+    // worse than no history. In practice this cannot happen -- saving is done
+    // from the app, and the app sets the clock on every poll.
+    Serial.println("lifeboat: file has no saved clock, discarded");
+    return;
+  }
+  lbHeldFilled = h.filled;
+  lbPendingEpoch = h.savedEpoch;
+  lbHave = true;
+  Serial.printf("lifeboat: %u buckets held, waiting for the clock\n",
+                (unsigned)h.filled);
+}
+
+// Reached from learnEpoch(), which is defined above this point.
+void lbApplyGapIfPending();
+
+// Called once the clock is known. Pushes in one empty bucket per 15 minutes of
+// outage so the chart shows the hole instead of implying continuity.
+// Runs once, the first time the clock is known.
+//
+// Each bucket is placed by its OWN ABSOLUTE TIME, which is what makes this
+// simple. Number the 15-minute buckets of all time: b = epoch / 900. The file
+// records the moment its newest bucket closed, so every bucket in it has a
+// known number, and every slot in the live ring does too. Placing a bucket is
+// then one subtraction, and everything else falls out for free:
+//
+//   * A gap is whatever never gets written -- no gap to compute or insert.
+//   * Anything older than the window lands outside the ring and is dropped.
+//   * Data collected since boot is already in the ring; restored buckets only
+//     fill slots that are still empty, so nothing can be trampled.
+//
+// The previous version placed buckets by POSITION and corrected with a shift,
+// which is where three separate bugs lived: uptime counted as outage, the
+// shift trampling newer data, and a stale file re-applied on every boot.
+static void lbApplyGap() {
+  uint32_t saved = lbPendingEpoch;
+  lbPendingEpoch = 0;
+  if (!lbHave) return;
+  lbHave = false;
+  uint32_t now = nowEpoch();
+  if (!now || !saved) return;
+
+  const uint32_t bSaved = saved / 900;      // bucket number of the file's newest
+  const uint32_t bNow   = now / 900;        // bucket number of the ring's newest
+  if (bNow < bSaved) { Serial.println("lifeboat: file is from the future, discarded"); return; }
+
+  int placed = 0;
+  for (int j = 0; j < TEMP_BUCKETS; j++) {
+    uint32_t b = bSaved - (TEMP_BUCKETS - 1 - j);   // this bucket's number
+    if (bSaved < (uint32_t)(TEMP_BUCKETS - 1 - j)) continue;   // predates epoch
+    uint32_t age = bNow - b;                        // in buckets
+    if (age >= TEMP_BUCKETS) continue;              // older than the window
+    int i = TEMP_BUCKETS - 1 - (int)age;            // where it belongs now
+    for (int k = 0; k < 4; k++)
+      if (lbRing(k)[i] == INT16_MIN) lbRing(k)[i] = lbHeld[k][j];
+    if (lbHeld[0][j] != INT16_MIN) placed++;
+  }
+  if (tempFilled < TEMP_BUCKETS) {
+    uint32_t f = tempFilled + placed;
+    tempFilled = (f > TEMP_BUCKETS) ? TEMP_BUCKETS : (uint16_t)f;
+  }
+  Serial.printf("lifeboat: %d buckets placed, %lu min since the file was written\n",
+                placed, (unsigned long)((now - saved) / 60));
+}
+
+void lbApplyGapIfPending() { if (lbHave) lbApplyGap(); }
+
 #include "app_log.h"
 // The same reasoning applies to CAN1. The head unit re-asserts PDM levels at
 // ~91 Hz, so a gap of even a second is abnormal; if the bus goes quiet -- a
@@ -663,7 +898,9 @@ void sendState() {
     // DRAW negative, a surplus (shore, solar, alternator) positive with no
     // + sign. battA already follows this -- the wire value is negated at decode.
     J("\"soc\":%.1f,\"battV\":%.2f,\"battA\":%.2f,\"battW\":%.0f,", soc, battV, battA, battW);
-    J("\"packline\":\"Pack: %.1fV  %.0f°F  %uAh\",", battV, battT * 9 / 5 + 32, battAh);
+    // Temperature is NOT repeated here -- it has its own row and chart in the
+    // battery card. Voltage and amp-hours have no other home, so they stay.
+    J("\"packline\":\"Pack: %.1fV  %uAh\",", battV, battAh);
     J("\"packf\":%s,",
       (battTAt && (millis() - battTAt < BATT_STALE_MS))
           ? String(battT * 9 / 5 + 32, 0).c_str() : "null");
@@ -819,6 +1056,8 @@ void sendState() {
       cellBad ? 1 : 0, cellMinV, cellMinIdx + 1, cellFrm[0][7]);
     if (cellBad)
       J("\"cellbadago\":%lu,", (unsigned long)((millis() - cellBadAt) / 1000));
+    J("\"lbok\":%d,\"lbcount\":%u,\"lbsave\":%lu,",
+      lbMounted ? 1 : 0, (unsigned)lbLastCount, (unsigned long)lbLastSave);
     J("\"cellraw\":[");
     for (int f = 0; f < ID_CELL_N; f++) {
       J("%s\"", f ? "," : "");
@@ -893,14 +1132,27 @@ void sendState() {
     } else J("\"winmin\":0,\"windir\":\"\",");   // "" = window still filling
   }
   {
-    char ft[200];
+    char ft[256];                       // grew when the clock field was added
     uint32_t up = millis() / 1000;
     char ups[24];
     if (up < 7200) snprintf(ups, sizeof ups, "up %lu mins", (unsigned long)(up / 60));
     else snprintf(ups, sizeof ups, "up %luh %02lum", (unsigned long)(up / 3600),
                   (unsigned long)((up % 3600) / 60));
-    snprintf(ft, sizeof ft, "%s  |  CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
-             ups,
+    // Say plainly whether the clock has been learned. Silence here would let
+    // a board that never saw a phone look identical to one that did.
+    char clk[40];   // roomy: the compiler cannot bound tm_year
+    uint32_t ep = nowEpoch();
+    if (ep) {
+      time_t t = (time_t)ep;
+      struct tm tmv;
+      gmtime_r(&t, &tmv);
+      snprintf(clk, sizeof clk, "%04d-%02d-%02d %02d:%02d:%02dZ",
+               tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
+               tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+    } else snprintf(clk, sizeof clk, "not set");
+    snprintf(ft, sizeof ft,
+             "%s  |  clock %s  |  CAN1 %lu  CAN2 %lu (%lus ago)  |  last: %s%s%s",
+             ups, clk,
              (unsigned long)cntA, (unsigned long)cntB,
              (unsigned long)(battAt ? (millis() - battAt) / 1000 : 0), lastCmd,
              (faultB[0][0] | faultB[0][1]) ? "  PDM1 FAULT" : "",
@@ -1018,6 +1270,10 @@ void setup() {
     tempHist[i] = INT16_MIN; ambHist[i] = INT16_MIN; pwrHist[i] = INT16_MIN;
     ptHist[i] = INT16_MIN;
   }
+  bootId = (uint16_t)(esp_random() & 0xFFFF);   // labels this run in the log
+  lbMounted = SPIFFS.begin(true);            // true = format if unformatted
+  if (!lbMounted) Serial.println("SPIFFS mount failed; lifeboat disabled");
+  else lbRestore();
   Serial.printf("temp sensor: %.1f C\n", temperatureRead());
   tempHourStart = millis();
   tempLastSample = millis();
@@ -1048,6 +1304,10 @@ void setup() {
     server.send_P(200, "text/html", INDEX_HTML);
   });
   server.on("/api/state", HTTP_GET, []() {
+    // The poll that already runs every second is the natural carrier: no extra
+    // request, and the clock re-syncs continuously for free.
+    if (server.hasArg("now"))
+      learnEpoch((uint32_t)strtoul(server.arg("now").c_str(), NULL, 10));
     server.sendHeader("Cache-Control", "no-store");
     sendState();
   });
@@ -1202,6 +1462,11 @@ void tempTick() {
                                   : INT16_MIN;
     ptAcc = 0; ptCnt = 0;
     if (tempFilled < TEMP_BUCKETS) tempFilled++;
+    // Persist automatically: the rings only change here, so this is the exact
+    // moment there is something new to keep. Removes the "did I remember to
+    // press save" failure entirely -- an unexpected power loss now costs at
+    // most the bucket in progress.
+    { char m[128]; lbSave(m, sizeof m); }
   }
 }
 

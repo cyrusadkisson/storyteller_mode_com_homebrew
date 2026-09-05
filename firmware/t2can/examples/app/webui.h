@@ -56,7 +56,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 .row.sub2 button{padding:8px 13px;font-size:14px}
 #foot{font-size:12px;color:var(--mut);margin-top:16px;white-space:pre-wrap}
 </style></head><body>
-<div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1><span class="sub" id="build"></span></div>
+<div class="row" style="padding:0 2px"><h1 style="margin:0">Van Companion</h1></div>
 
 <h2>Battery &amp; Power</h2><div class="card">
 <div id="cellwarn" class="warn" style="display:none"></div>
@@ -135,6 +135,17 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <button id="hotdismiss" style="min-width:0;padding:6px 12px;font-size:13px">dismiss</button>
 </div>
 </div>
+
+<details style="margin-top:20px">
+<summary class="sub" style="cursor:pointer;padding:6px 2px">Advanced</summary>
+<div class="card" style="margin-top:6px">
+<div class="row"><span class="name">Chart history
+<span class="sub">written to flash every 15 min and restored on the next boot,
+so a power swap costs at most the bucket in progress</span></span>
+<b id="lbstat">--</b></div>
+<div class="sub" id="lbnote" style="margin-top:6px"></div>
+</div>
+</details>
 
 <div id="foot"></div>
 <script>
@@ -449,8 +460,11 @@ async function cmd(q){
 let spHold=0;
 async function poll(){
   try{
-    const j=await (await fetch("/api/state")).json();
-    document.getElementById("build").textContent=j.build||"";
+    // The board has no clock. Handing it ours on the poll that already runs
+    // every second is what gives the event log real dates -- see the wall
+    // clock note in app.ino.
+    const j=await (await fetch(
+      "/api/state?now="+Math.floor(Date.now()/1000))).json();
     document.getElementById("batt").textContent=j.batt||"";
     document.getElementById("drawline").textContent=j.drawline||"--";
     document.getElementById("socpct").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
@@ -671,6 +685,22 @@ async function poll(){
           :"All sixteen equal. Cells diverge as the pack drains — near a full charge they genuinely are alike, so no spread here means little.");
       document.getElementById("cellraw").textContent=
         have&&j.cellraw?j.cellraw.join("\n"):"";
+    }
+    // Lifeboat status. No button: a manual save would stamp a newer time over
+    // unchanged data and understate the outage gap (see app.ino).
+    {
+      const st=document.getElementById("lbstat"), nt=document.getElementById("lbnote");
+      if(!j.lbok){
+        st.textContent="off";
+        nt.textContent="Filesystem unavailable — history is NOT being saved and will be lost on any power cycle.";
+      }else if(!j.lbsave){
+        st.textContent="waiting";
+        nt.textContent="Nothing written yet. The first save happens when the first 15-minute bucket completes.";
+      }else{
+        const d=new Date(j.lbsave*1000);
+        st.textContent=j.lbcount+" buckets";
+        nt.textContent="Last written "+d.toLocaleTimeString()+".";
+      }
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");
