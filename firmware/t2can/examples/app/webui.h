@@ -451,28 +451,45 @@ async function poll(){
       // Plain hours rather than d/h -- shorter, and the qualifiers matter more
       // than the precision. Qualifiers are set smaller and muted so the
       // numbers read first.
-      // Past 999h is not a real estimate -- at that draw the arithmetic is
-      // dominated by noise around zero current. Flag it rather than print it.
-      const hrs=h=>h>999?"fault":h.toFixed(1)+"h";
-      // Each line renders unconditionally: a number, "fault", "charging",
-      // or "?h" when its window has not filled. Never absent.
-      const m=j.lifeline?j.lifeline.match(/(\d+)d\s*(\d+)h/):null;
+      // Direction comes from an explicit field, never from parsing prose.
+      // The trailing space on "til full " keeps the two figures aligned
+      // against each other, since "full" is a character shorter than "empty".
+      const suffix=d=>d==="full"?" til full ":(d==="empty"?" til empty":"");
+      // Past 999h the number is dominated by noise around zero current, so it
+      // is not an estimate -- but it is not an error either. A van sitting at
+      // any state of charge with solar input balancing its draw is in a real,
+      // healthy equilibrium, and so is a full pack at rest. Rather than guess
+      // which, state the only thing actually known: the figure is off the top
+      // of the scale. No direction is appended, because at that magnitude the
+      // sign is noise too.
+      const OVER=">999h";
+      const fig=(mins,dir)=>{
+        const h=mins/60;
+        return h>999?OVER:h.toFixed(1)+"h"+suffix(dir);
+      };
+      // The two rows may disagree, direction included: plug in after a long
+      // discharge and this one flips to "til full" while the hour-long mean
+      // below still reads "til empty". It corrects itself as samples accrue.
       document.getElementById("remnow").textContent=
-        m?hrs(+m[1]*24 + +m[2]):
-        (j.lifeline&&j.lifeline.indexOf("charging")>=0?"charging":"?h");
+        j.instdir?fig(j.instmin,j.instdir):OVER;
       // The window grows 15m -> 1h; label and value track it. The whole row
       // stays hidden until 15 minutes of data exist -- showing a figure before
       // that would be noise.
       {
+        // windir: "" = the window has not filled yet, and the row stays
+        // hidden -- a figure from under 15 minutes of samples would be noise.
+        // "full"/"empty" = a real figure. "error" = filled, but the net flow is
+        // inside the deadband, which reads as off-scale rather than as a fault.
         const row=document.getElementById("remhalfrow");
         const n=j.pwrwinN||0;
         const wmin=Math.min(60,Math.round(n*5/60));
-        if(j.remwin==null){
+        if(!j.windir){
           row.style.display="none";
         }else{
           document.getElementById("remlab").textContent=
             "(derived from past "+wmin+"m usage)";
-          document.getElementById("remhalf").textContent=hrs(j.remwin/60);
+          document.getElementById("remhalf").textContent=
+            (j.windir==="error")?OVER:fig(j.winmin,j.windir);
           row.style.display="flex";
         }
       }

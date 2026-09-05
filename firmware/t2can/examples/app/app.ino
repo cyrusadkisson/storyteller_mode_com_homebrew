@@ -571,6 +571,14 @@ void onCanBFrame(const twai_message_t &m) {
 // four histories plus state could reach the ceiling and silently truncate.
 static char jbuf[6656];
 
+// Amp-hours still needed to reach a full pack, from the two figures the BMS
+// does publish. Returns -1 when it cannot be derived.
+static float ahToFull() {
+  float soc = battSoC2 * 0.5f;
+  if (battAh == 0 || soc <= 0.0f || soc > 100.0f) return -1.0f;
+  return battAh * (100.0f - soc) / soc;
+}
+
 void sendState() {
   char *w = jbuf;
   int left = sizeof jbuf;
@@ -608,19 +616,26 @@ void sendState() {
     // a dead zone here (|A| below a threshold) made the immediate figure vanish
     // exactly when the van was idling. Near-zero discharge produces a huge
     // number, which the UI renders as "fault" per its >999h rule.
+    // Explicit minutes and a direction, not prose for the UI to regex. The
+    // two rows are allowed to DISAGREE, including on direction: plug in after
+    // a long discharge and the instant row flips to "til full" while the
+    // hour-long mean is still negative and reads "til empty". That is correct
+    // -- the window corrects itself as the new samples accumulate.
     uint32_t mins = 0;
-    if (battMin != 0xFFFF && battMin > 0) mins = battMin;
-    else if (battA < 0.0f && battAh > 0) mins = (uint32_t)(battAh / -battA * 60.0f);
-    if (mins > 0)
-      J("\"lifeline\":\"   \u2022   %02ud %02uh\",",
-        (unsigned)(mins / 1440), (unsigned)((mins % 1440) / 60));
-    else if (battA > 0.0f)
-      J("\"lifeline\":\"   \u2022   charging\",");
-    else
-      J("\"lifeline\":\"\",");
+    const char *dir = "";
+    if (battA > 0.0f) {                       // charging: time to a full pack
+      float ah = ahToFull();
+      if (ah >= 0.0f) { mins = (uint32_t)(ah / battA * 60.0f); dir = "full"; }
+    } else {                                  // discharging: time to empty
+      if (battMin != 0xFFFF && battMin > 0) mins = battMin;
+      else if (battA < 0.0f && battAh > 0) mins = (uint32_t)(battAh / -battA * 60.0f);
+      if (mins > 0) dir = "empty";
+    }
+    J("\"instmin\":%lu,\"instdir\":\"%s\",", (unsigned long)mins, dir);
     J("\"batt\":\"\",");
   } else J("\"soc\":null,\"batt\":\"%s\","
-           "\"packline\":\"\",\"drawline\":\"--\",\"lifeline\":\"\","
+           "\"packline\":\"\",\"drawline\":\"--\","
+           "\"instmin\":0,\"instdir\":\"\","
            "\"packf\":null,\"vsoc\":0,",
            seenBatt ? "CAN2 battery data stale" : "no CAN2 battery frames");
   J("\"tempin\":%s,", seenAmb ? String(ambC * 9 / 5 + 32, 1).c_str() : "null");
@@ -763,10 +778,20 @@ void sendState() {
       for (uint16_t i = 0; i < pwFill; i++) sum += pwrwin[i];
       float avgW = sum / pwFill;
       float avgA = (battV > 1.0f) ? avgW / battV : 0.0f;
-      if (avgA < -0.05f && battAh > 0)
-        J("\"remwin\":%u,", (unsigned)(battAh / -avgA * 60.0f));
-      else J("\"remwin\":null,");
-    } else J("\"remwin\":null,");
+      // Same shape as the instant row: minutes plus a direction. The window
+      // sign is what decides the direction here, so shortly after plugging in
+      // this row still reads "til empty" while the instant row reads "til
+      // full". They are measuring different spans and are meant to disagree.
+      uint32_t wmins = 0;
+      const char *wdir = "error";             // filled but underivable
+      if (avgA > 0.05f) {                     // net charge over the window
+        float ah = ahToFull();
+        if (ah >= 0.0f) { wmins = (uint32_t)(ah / avgA * 60.0f); wdir = "full"; }
+      } else if (avgA < -0.05f && battAh > 0) {
+        wmins = (uint32_t)(battAh / -avgA * 60.0f); wdir = "empty";
+      }
+      J("\"winmin\":%lu,\"windir\":\"%s\",", (unsigned long)wmins, wdir);
+    } else J("\"winmin\":0,\"windir\":\"\",");   // "" = window still filling
   }
   {
     char ft[200];
