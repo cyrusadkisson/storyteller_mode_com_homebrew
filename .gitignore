@@ -32,6 +32,14 @@ images/
 *.jpeg
 *.png
 *.heic
+
+# ...except documentation images, which are the point of a README: app
+# screenshots and installation photos. Keep van interiors and anything with GPS
+# EXIF out of here -- strip metadata before adding.
+!docs/img/
+!docs/img/*.png
+!docs/img/*.jpg
+!docs/img/*.jpeg
 *.MACRO_FOCUS.jpg
 
 # ---------------------------------------------------------------------------

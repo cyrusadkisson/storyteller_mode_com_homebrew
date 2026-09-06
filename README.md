@@ -1,263 +1,281 @@
-# storyteller_mode_com_homebrew
+# Van Companion
 
-A homebrew project to control a **Storyteller Overland (MY24) "MODE" van** from
-a phone — and, along the way, to document how the stock system actually works.
+**Control your Storyteller Overland van from your phone.**
 
-The factory panel is fixed in the galley. This adds a second way in: a
-**parallel companion controller** that speaks the van's own control bus, so
-lights, water pump, roof A/C, vent and inverter can be operated from a phone
-anywhere in or around the van, and battery, tank and temperature readings can
-be seen without walking to the screen.
+The MODE COM touchscreen is good, and it is bolted to the galley. That is fine
+until you are somewhere else in the van:
 
-It does not modify the locked, signed factory firmware — that would be risky,
-since the same computer runs the van's DC electrical system. The stock panel
-keeps working exactly as it did and remains the fallback.
+- You start driving and can't remember whether you left the roof vent open.
+- You're in a lawn chair outside and the A/C kicks on.
+- Your partner is asleep and you left the awning light on.
+- You're in bed and the water pump is still running.
 
----
+This project adds a second way in. A small board taps the van's control bus and
+serves a web page over its own Wi-Fi, so the lights, water pump, roof A/C, roof
+vent and inverter work from a phone anywhere in or around the van — along with
+battery, tank and temperature readings you'd otherwise walk to the screen for.
 
-# ⚠️ DISCLAIMER — READ BEFORE USING ANY OF THIS
+**Nothing about the factory system changes.** The stock firmware is never
+touched, the panel keeps working exactly as it did, and it remains the fallback.
+The board only listens and speaks on a wire the van already uses.
 
-**USE ENTIRELY AT YOUR OWN RISK. NO WARRANTY OF ANY KIND IS OFFERED OR IMPLIED,
-INCLUDING AS TO ACCURACY.**
-
-This repository documents an **independent, amateur** reverse‑engineering effort
-by a vehicle owner. It is **not** engineering guidance, not a service manual,
-not vendor‑sanctioned, and has **not** been reviewed by anyone qualified to
-review it. Some of it is certainly wrong.
-
-Acting on this information can **damage your vehicle, destroy expensive
-equipment, cause fire, cause serious injury, or kill you.** Specifically:
-
-- **High‑voltage DC.** This van's house system is **48 V nominal (~53 V
-  charged)**, not 12 V. A large lithium pack can deliver hundreds of amps into
-  a short with no fuse in between. It does not care that you are careful. DC
-  arcs do not self‑extinguish the way AC does.
-- **Fire.** Improper taps, undersized conductors, and unfused connections are a
-  fire risk in a vehicle you may be asleep inside.
-- **Machinery.** These commands drive **motors, pumps, heaters and a furnace**.
-  A command written to a motor channel **latches** — it keeps driving until
-  something writes zero. Crashed software, a dropped connection, or a bug can
-  leave an awning motor straining against its stop or a pump running dry.
-- **Safety systems.** The bus documented here is shared with the battery
-  management, inverter and charger. Interfering with a BMS can defeat
-  protections that exist to prevent thermal runaway.
-- **Warranty and insurance.** Tapping wiring or transmitting on the vehicle bus
-  may **void your vehicle, appliance or battery warranty**, and may affect
-  insurance claims. That is between you and them.
-
-**Findings come from exactly one MY24 van.** Other model years, trim levels and
-build configurations differ. A channel that is a light on this van may be
-something else on yours. **Verify everything against your own vehicle** before
-acting on it, and assume the mapping is wrong until you have proven otherwise.
-
-**Do not use this on a vehicle you do not own**, and do not use it to interfere
-with anyone else's property.
-
-**This project transmits on the vehicle bus.** The mapping was built by
-listening, but the companion controller commands lights, pumps, the roof A/C,
-the vent and the inverter for real, and this repository documents how. The
-authors and contributors accept **no liability whatsoever** for any loss,
-damage or injury arising from use of this material. If you are not prepared to
-own the consequences of your own actions on your own vehicle, **do not
-proceed.**
+> 📷 **Screenshots go here** — `docs/img/app-battery.png`, `app-lights.png`,
+> `app-climate.png`. See [`docs/img/README.md`](docs/img/README.md).
 
 ---
 
-## The system (what we're working with)
+# ⚠️ Read this first
+
+**Use at your own risk. No warranty, including as to accuracy.** This is amateur
+reverse engineering by a van owner, not vendor guidance, and some of it is
+certainly wrong.
+
+- **48 V, not 12 V.** The house pack sits near 53 V charged and can push
+  hundreds of amps into a short. DC arcs don't self-extinguish.
+- **It commands real machinery** — pumps, motors, heaters. Motor channels
+  *latch*: they keep driving until something writes zero.
+- **Tested on exactly one van:** a 2024 MODE Classic with a **single 8.4 kWh
+  Lithionics** pack. Requires a Lithionics BMS.
+- **Most Storyteller vans have the dual 16.8 kWh system.** The per-cell
+  monitoring assumes one 16-cell module and will be wrong or incomplete on a
+  two-battery van. Everything else should still apply. Untested.
+- Tapping wiring may **void warranties** and affect insurance claims.
+- Don't use it on a vehicle you don't own.
+
+If you're not prepared to own the consequences on your own van, don't proceed.
+
+---
+
+## What it does, and doesn't
+
+**Controls:** cabin / cargo / aux lights, water pump, recirculation pump, roof
+A/C (off / cool / heat, compressor, fan speed, temperature setpoint), roof vent
+(lid, fan, direction, speed), inverter.
+
+**Shows:** state of charge, power flow, time to full or empty, pack voltage /
+current / temperature, per-cell voltages, tank levels, cabin temperature, AC line
+voltage and frequency, Rixen heater state, per-channel power draw, board
+temperature — most with 48-hour charts.
+
+**Won't do**, and these are limitations of tapping the bus in parallel rather
+than oversights — reasons in [`docs/design-notes.md`](docs/design-notes.md):
+
+- **No dimming.** Holding a brightness would need ~50 % more bus traffic. Use
+  the panel.
+- **No Rixen heater control.** The head unit reverts any command within ~5 s.
+  Read-only.
+- **The factory screen doesn't follow the app.** It updates for lights and pumps
+  (those work by spoofing a wall switch), but not for A/C or vent changes. The
+  app *does* follow the screen.
+- **No reading lights, no sink drain.** Neither can be held by a parallel tap.
+- **Awning is decoded but unverified** — this van doesn't have one.
+
+---
+
+## Installation
+
+Budget an afternoon. You need to be comfortable pulling the galley panel,
+crimping a wire, and drilling four small holes in a plastic bracket.
+
+### Parts
 
 | | |
 |---|---|
-| Head unit | 3sigma / Enovation Controls display, part **HV1100‑GF‑T‑CR** |
-| OS / SoC | QNX Neutrino on Renesas R‑Car M2 (ARM Cortex‑A15), 1280×768 |
-| UI engine | `AppLoader` — data‑driven from a config bundle (not hard‑coded) |
-| Control bus | **CAN** (J1939 / Enovation "CANPro"), plus MODBUS |
-| Loads | Switched by **Power Distribution Modules** (PDM1/PDM2) — lights, pumps, awning, heater |
-| Battery | **Lithionics** BMS, reported over J1939 |
-| Firmware pkg | `.pv1` container: QNX boot image + gzip'd tar application + MCU hex |
+| **LILYGO T-2CAN-FD** (ESP32-S3, dual CAN) | *[add AliExpress link]* · *[add Amazon link]* |
+| **6 × Posi-Tap** connectors | for 18–22 AWG · 📷 `docs/img/part-positap.jpg` |
+| **6 × spade connector pairs** *(optional)* | so the board can be unplugged · 📷 `docs/img/part-spades.jpg` |
+| **20–22 AWG wire**, ~2 ft | three colours helps |
+| **Zip ties + foam padding** | for mounting |
+| **6 ft USB-C to USB-A cable** | power. A **left-angled** USB-A end routes far better, if you can find one. |
 
-See [`docs/architecture.md`](docs/architecture.md) for the full breakdown and
-[`docs/reverse-engineering-log.md`](docs/reverse-engineering-log.md) for how we
-got there.
+### Tools
 
-## Why the CAN bus (and not USB/Wi‑Fi/Bluetooth)
+- Wire cutter / stripper / crimper — 📷 `docs/img/tool-crimper.jpg`
+- Phillips screwdriver
+- Small flat-head ("electronics") screwdriver, for the board's terminal blocks
+- Drill with a **3/16"** bit
 
-- **The USB port doesn't lead anywhere.** There is a USB pigtail running from
-  the back of the panel up into the overhead cabinet, and it looks like the
-  obvious way in — but it is a **host** port, the same kind as on a laptop.
-  It exists to read firmware updates and media off a **USB stick**. Plugging a
-  computer into it connects two hosts together, which does nothing: neither
-  side will talk. Tested directly — a Linux laptop on that port produced no
-  new device at all, on plug or replug. There is no software fix; it is what
-  the port is wired to be. (A USB device port, the kind a phone has, is what
-  would have been needed.)
-- **The Wi‑Fi and Bluetooth radios are dormant.** The firmware carries the
-  apps for both — BLE, Bluetooth serial, a network launcher, `hostapd` — but
-  the panel offers no setting to switch either on, and none has ever been seen
-  broadcasting. Waking them would mean modifying the signed factory firmware,
-  which is the exact risk this project avoids.
-- The **CAN bus is always live** and is the real control surface. Every load is a
-  named signal on it, and the firmware ships the full **signal dictionary**
-  ([`DeviceInformationAll.pbuff`]) that names them all. That's our map.
+---
 
-The companion controller is a **LILYGO T-2CAN-FD** (ESP32-S3, two independent
-CAN interfaces) that taps both buses and serves a phone web UI over its own
-WiFi access point. The stock firmware is never modified — **no flashing, no
-brick risk.** See [`hardware-and-tap.md`](docs/hardware-and-tap.md).
+### 1. Flash the firmware
 
-> **Set your own AP credentials before you flash.** The board has no screen or
-> reset button, so the SSID and password are compiled in, and the placeholders
-> are published here — anyone in radio range who has read the source could
-> otherwise join and operate the van. Copy
-> [`ap_secret.h.example`](firmware/t2can/examples/app/ap_secret.h.example) to
-> `ap_secret.h` and edit it; that file is git-ignored. The build warns until
-> you do.
+Do this at a desk, before touching the van. The board only needs USB.
 
-## Repo layout
+**Set your own Wi-Fi password first.** The board has no screen, so credentials
+are compiled in — and the defaults are published in this public repo, meaning
+anyone in range who has read it could join and operate your van. Open
+`firmware/t2can/examples/app/app.ino`, find these two lines near the top, and
+change them:
 
-```
-docs/      project documentation & reverse-engineering notes
-tools/     scripts that operate on YOUR local copy of the firmware
-firmware/  the companion controller's own firmware (T-2CAN-FD)
-data/      machine-readable CAN map and channel tables
+```c
+static const char *AP_SSID = "VanCompanion";
+static const char *AP_PASS = "storyteller";      // WPA2 requires >= 8 chars
 ```
 
-## ⚠️ What is NOT in this repo (intentionally)
+Then install [PlatformIO](https://platformio.org/install/cli) and build:
 
-The Storyteller/3sigma firmware (`*.pv1`) and everything extracted from it
-(binaries, `.pbuff`, screen images, `Configuration.bin`, …) are **proprietary,
-copyrighted, signed software** and are **git‑ignored**. This repo contains only
-our own analysis, documentation, and tooling. Keep your own firmware copy
-locally; do not commit or redistribute it.
+```bash
+git clone https://github.com/cyrusadkisson/storyteller_mode_com_homebrew.git
+cd storyteller_mode_com_homebrew
+pio run -d firmware/t2can -t upload
+```
 
-## ⚠️ Safety — read this before writing anything to the bus
+Platform notes:
 
-This documentation is complete enough to **command real machinery**. That is
-the point of it, and it is also the risk.
+- **Linux** — the board appears as `/dev/ttyACM0`. If upload fails with a
+  permissions error, add yourself to `dialout`
+  (`sudo usermod -aG dialout $USER`) and **reboot** — logging out is not always
+  enough, because your systemd user session keeps the old group list.
+- **macOS** — appears as `/dev/cu.usbmodem*`. No driver needed.
+- **Windows** — appears as a COM port. If PlatformIO can't find it, pass
+  `--upload-port COM5` with the right number from Device Manager.
 
-- **Motor and pump channels latch.** A value written to the awning motor or a
-  pump **stays commanded until something writes `0x00`**. An app that sets a
-  value and then crashes, loses its connection, or is force‑quit will leave a
-  motor driving against its end stop, or a pump running dry, indefinitely.
-  **Anything that writes to those channels needs a watchdog that zeroes them.**
-- **Momentary vs latching is not predictable** from what a load does — this van
-  has two pumps that behave oppositely. It must be observed per channel.
-- **Read‑only first, always.** Bring the interface up in listen‑only
-  (`tools/can_up.sh` refuses otherwise) and confirm you are on the right bus
-  before considering transmission.
-- The head unit shares this bus with the van's DC electrical system. Treat
-  transmitting as a separate, deliberate step — not a continuation of sniffing.
+Confirm it worked: open the serial monitor at 115200 baud and you should see
 
-**If you transmit, you own what happens.** Bring the bus up listen-only, prove
-you are on the right one, and treat the first transmitted frame as its own
-deliberate project with a load chosen so the worst case is a light coming on —
-not a motor moving, not a heater igniting, not a pump running.
+```
+companion app: boot
+canA: CAN1 250k OK
+canB: CAN2 250k OK
+AP VanCompanion up, ip 192.168.4.1
+```
+
+`CAN … OK` here only means the controllers initialised — the wiring is proven
+later, in the van.
+
+### 2. Wire it in
+
+**Turn the system off at the panel first.**
+
+1. Unscrew the galley panel and its enclosure and let it hang. **Don't
+   disconnect anything.**
+2. Posi-Tap the six wires — CAN1 high/low/ground and CAN2 high/low/ground.
+   Which wires, with photos, is in
+   [`docs/hardware-and-tap.md`](docs/hardware-and-tap.md).
+   📷 `docs/img/install-taps.jpg`
+3. Run them to the board's screw terminals: **CAN-A = CAN1** (the accordion-
+   sleeved pair), **CAN-B = CAN2** (the pair tagged CONTROL PANEL). **Label both
+   ends now** — they are indistinguishable in an hour.
+   📷 `docs/img/install-terminals.jpg`
+4. *(Optional)* Crimp spade connectors so the board can be removed without
+   re-tapping.
+5. Plug the USB cable into the board; the other end goes to the pillar behind
+   the driver.
+
+> **Don't swap the buses.** The software could be changed to swap them, but
+> deliberately isn't: CAN1 is the flakier bus, and the MCP2518FD side (CAN-A)
+> recovers from bus-off, while the ESP32's TWAI side (CAN-B) does not.
+
+### 3. Mount it
+
+1. Loosen the MODE COM screen enough to gain room. Don't remove it.
+2. Drill four **3/16"** holes in the bracket — 📷 `docs/img/install-holes.jpg`
+3. Fish zip ties through — 📷 `docs/img/install-zipties.jpg`
+4. Cut the foam pad to the board's footprint — 📷 `docs/img/install-foam.jpg`
+5. Seat the board on the foam and cinch it down — 📷 `docs/img/install-mounted.jpg`
+6. Route the USB cable down through the driver-side plastics —
+   📷 `docs/img/install-usb.jpg`
+7. **Test before closing up:** power on, join the `VanCompanion` Wi-Fi, open
+   <http://192.168.4.1>, and check the footer shows both CAN counters climbing.
+   That is the real proof the taps are good.
+8. Re-tighten the screen and refit the panel and enclosure.
+
+**Note on Wi-Fi:** joining the board's access point takes your phone off the
+internet, since the board isn't a gateway. That's normal.
+
+---
+
+## Features
+
+> 📷 **Screenshots go here.** Each section below wants one — filenames and a
+> checklist are in [`docs/img/README.md`](docs/img/README.md).
+
+**Battery & Power** — charge, live power flow with a 48-hour chart, time to full
+or empty, pack temperature and its own chart, inverter on/off.
+📷 `docs/img/app-battery.png`
+
+One place the app is simply more correct than the panel: when the BMS declines
+to estimate time remaining it sends `0xFFFF`, and the factory screen prints that
+sentinel literally as **45d 12h**. The app computes the figure instead.
+
+**Lights & switches** — cabin, cargo, aux, water pump, recirculation, with
+per-channel power draw. 📷 `docs/img/app-lights.png`
+
+**Climate** — A/C off / cool / heat, compressor, fan auto / low / high,
+temperature setpoint, cabin temperature with a 48-hour chart.
+📷 `docs/img/app-climate.png`
+
+**Roof vent** — open / close, fan on/off, airflow direction, speed.
+📷 `docs/img/app-vent.png`
+
+**Cell monitor** — all sixteen cell voltages, the weakest one called out, and
+the spread across the pack. 📷 `docs/img/app-cells.png`
+
+**Warnings that watch while you're away.** The board logs to flash and keeps
+watching with no phone connected:
+
+- **Weak cell** — the BMS opens the contactor on the *weakest cell*, never the
+  pack average, which is why these vans can die showing 80 % charge. The app
+  warns when a cell nears its floor or drifts from the pack.
+- **Voltage / charge disagreement** — a backstop for the same failure, using
+  only pack-level data.
+- **Board over-temperature** — sustained above 185 °F.
+
+Events are written to flash with real timestamps and survive a total power loss,
+so after a shutdown you can read what the pack was doing on the way down:
+`http://192.168.4.1/api/log`.
+
+---
+
+## Documentation
+
+| | |
+|---|---|
+| [`design-notes.md`](docs/design-notes.md) | why CAN, why a parallel tap, what that rules out, bus safety |
+| [`hardware-and-tap.md`](docs/hardware-and-tap.md) | which wires to tap, with photos |
+| [`architecture.md`](docs/architecture.md) | the stock system, inside and out |
+| [`energy-can2.md`](docs/energy-can2.md) | battery, inverter, charger, per-cell decode |
+| [`pdm-control.md`](docs/pdm-control.md) | how loads are switched |
+| [`climate-control.md`](docs/climate-control.md) | A/C, thermostat, vent, Rixen |
+| [`can-map.md`](docs/can-map.md) · [`signal-dictionary.md`](docs/signal-dictionary.md) | the wire-level message and signal maps |
+| [`reverse-engineering-log.md`](docs/reverse-engineering-log.md) | how all of it was worked out |
+| [`t2can-bench.md`](docs/t2can-bench.md) | board bring-up, and two bugs in LILYGO's stock example |
+
+```
+docs/       documentation and reverse-engineering notes
+firmware/   the companion controller's firmware
+tools/      scripts that work on your own local firmware copy
+data/       machine-readable CAN map and channel tables
+```
+
+---
 
 ## Not affiliated
 
-This is an independent, unofficial project by a **Storyteller Overland owner**.
-It is **not affiliated with, endorsed by, or supported by** Storyteller
-Overland, Enovation Controls / Murphy, JET Technologies, Lithionics, Rixen, or
-any other vendor named here. All trademarks belong to their respective owners.
-
-Findings come from one MY24 van. Other model years and build configurations
-will differ. Verify against your own vehicle before relying on anything here.
-See the **disclaimer at the top of this file** — it is not boilerplate, and the
-48 V system in particular is a genuine hazard rather than a formality.
+An independent, unofficial project by a Storyteller Overland owner. **Not
+affiliated with, endorsed by, or supported by** Storyteller Overland, Enovation
+Controls / Murphy, JET Technologies, Lithionics, Rixen, or any other vendor
+named here. All trademarks belong to their owners.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). The license covers **this repository's own
-analysis, documentation, tooling and firmware only**. It does not and cannot
-grant any rights to the vendor firmware, which is not included here.
+MIT — see [`LICENSE`](LICENSE). Covers **this repository's own** analysis,
+documentation, tooling and firmware. It grants no rights to vendor firmware,
+which is not included here.
 
-Third-party code included:
+Third-party code:
 
 - [`firmware/t2can/libraries/Longan_CANFD/`](firmware/t2can/libraries/Longan_CANFD/)
-  — MCP2518FD driver, © Longan Labs, MIT (its own `LICENSE` is included).
-  Vendored because two bugs in the stock example for this board break CAN
-  work; see [`docs/t2can-bench.md`](docs/t2can-bench.md).
+  — MCP2518FD driver, © Longan Labs, MIT (its own `LICENSE` included). Vendored
+  because two bugs in LILYGO's stock example for this board break CAN work; see
+  [`t2can-bench.md`](docs/t2can-bench.md).
 - `firmware/t2can/libraries/private_library/pin_config.h` — LILYGO's pin
-  definitions for this board, carried unmodified from
-  [Xinyuan-LilyGO/T-2Can](https://github.com/Xinyuan-LilyGO/T-2Can). It has no
-  license header of its own; it is 23 `#define`s of GPIO numbers — the board's
-  physical wiring — and every sketch needs it to compile.
+  definitions, unmodified from
+  [Xinyuan-LilyGO/T-2Can](https://github.com/Xinyuan-LilyGO/T-2Can). No license
+  header of its own; it is 23 `#define`s of GPIO numbers and every sketch needs
+  it to compile.
 
-Protocol facts in [`docs/modewifi-analysis.md`](docs/modewifi-analysis.md) were
+Protocol facts in [`modewifi-analysis.md`](docs/modewifi-analysis.md) were
 corroborated against [ModeWifi](https://github.com/changer65535/ModeWifi)
-(GPL-3.0), an independent owner's project. **No code from it is used or
-included here** — observations about a shared vehicle bus are not copyrightable
-expression, and mixing GPL-3 code into this MIT repo is deliberately avoided.
-
-## Status
-
-**The companion controller is built and running in the van.** It taps both CAN
-buses, serves a phone UI over its own WiFi AP, and commands the loads listed
-below. The stock system is untouched and remains the fallback.
-
-| Area | State |
-|---|---|
-| `.pv1` firmware | unpacked, structure documented ([`architecture.md`](docs/architecture.md)) |
-| Signal dictionary | 1758 signals decoded ([`signal-dictionary.md`](docs/signal-dictionary.md)) |
-| Wire-level CAN DB | 30 messages / 129 signals from `Configuration.bin` ([`can-map.md`](docs/can-map.md)) |
-| PDM load control | protocol cracked, channels confirmed on the wire ([`pdm-control.md`](docs/pdm-control.md)) |
-| Climate | Rixen, thermostat and vent fully decoded ([`climate-control.md`](docs/climate-control.md)) |
-| Tanks | decoded, verified against the panel |
-| Battery / inverter / charger | CAN2 tapped and decoded ([`energy-can2.md`](docs/energy-can2.md)) |
-| **Companion controller** | **built, flashed, in the van** ([`firmware/t2can/`](firmware/t2can/)) |
-
-### What the controller does
-
-| Works | How |
-|---|---|
-| Cabin, cargo, aux, water pump, recirc | spoofs the wall-switch input; the head unit then toggles and holds the state itself |
-| Roof A/C — off/cool/heat, compressor, fan auto/low/high, cool setpoint | direct write, echoed back by the A/C. **Cool setpoint only** — the heat setpoint is decoded from the bus but neither shown nor settable; use the panel for it. |
-| Roof vent — lid, fan, airflow, speed | direct write, echoed by the vent |
-| Inverter | single-shot latch on CAN2 |
-| Read-only display | per-channel power draw, tank levels, battery voltage/current/SoC/temperature and time remaining, AC line voltage and frequency, cabin temperature, PDM fault flags, Rixen heater state |
-
-The time-remaining figure is one place this app is simply more correct than
-the panel: the BMS reports `0xFFFF` when it declines to estimate, and the
-stock screen renders that sentinel literally as **45d 12h**. See
-[`energy-can2.md`](docs/energy-can2.md).
-
-**Deliberately not included**, each for a measured reason:
-
-- **Dimming** — holding a brightness means out-transmitting the head unit
-  continuously (~250 Hz, roughly +50% bus load). Rejected on bus-safety
-  grounds; brightness stays on the factory panel.
-- **Reading lights** — they have no digital input to spoof, and a direct write
-  is overwritten within ~11 ms.
-- **Rixen heater writes** — the heater accepts them in ~300 ms, but the head
-  unit reverts them within ~5 s. Holding one would oscillate a diesel burner's
-  setpoint, so the app reads the heater and does not command it.
-- **Sink drain** — hold-to-run, and a parallel tap cannot sustain a
-  hold-to-run switch: the PDM re-broadcasts it as released ~25 times a second,
-  so a spoofed press only ever flickers. Left as a manual control by owner
-  decision.
-- **Awning lights and motor** — the awning is physically removed from this
-  van, so neither has been confirmed working. The app exposes the light as a
-  switch and the head unit's command byte responds, but no light exists to
-  see; on a van that has one, verify it before trusting it. The motor protocol
-  is decoded but untested, and it **latches** — anything driving it needs a
-  watchdog that writes zero.
-
-All of those would need an **inline** ("cut-and-stand-in") controller that owns
-the channel outright, rather than a parallel tap.
-
-### Buses
-
-The van uses **two CAN buses split by function**: CAN1 (pins 5/6) carries house
-loads, tanks and climate; CAN2 (pins 18/19) carries the battery, inverter,
-charger and shore power. Both are 250 kbit/s. A companion device needs **both**
-— state of charge, pack current and temperature are only on CAN2. See
-[`hardware-and-tap.md`](docs/hardware-and-tap.md) for the tap and
-[`energy-can2.md`](docs/energy-can2.md) for the energy bus.
-
-Every claim is labelled by how strongly it is supported:
-`CONFIRMED` means the frame was observed **and** the load was seen to respond;
-`CONFIRMED-FRAME` means the frame is certain but the load could not be observed
-(the awning channels — the hardware is absent from this van); `predicted` means
-derived from the firmware but untested. See
-[`data/pdm_channels.csv`](data/pdm_channels.csv).
-
-[`DeviceInformationAll.pbuff`]: docs/signal-dictionary.md
+(GPL-3.0), an independent owner's project. **No code from it is used here** —
+observations about a shared vehicle bus aren't copyrightable expression, and
+mixing GPL-3 code into this MIT repo is deliberately avoided.
