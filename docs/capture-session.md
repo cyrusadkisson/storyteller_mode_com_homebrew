@@ -124,14 +124,21 @@ Rows marked `**` are clean transitions — a byte that held one value with the
 load off and a different single value with it on. That's your control bit; the
 `bits` column tells you which bit within the byte.
 
+> **On demultiplexing.** Several IDs carry different messages selected by byte 0,
+> and `can_diff.py` splits them automatically. It identifies a real multiplexer by
+> the property that distinguishes one from a slowly drifting data byte: **a
+> multiplexer cycles.** It revisits its values repeatedly as the sender rotates
+> through sub-messages, where a data byte changes monotonically and rarely
+> returns. Frames appear in the output as `0x14EF1E11[FC]`.
+
 **Discipline that makes this work:**
 
 - **Change exactly one thing per capture pair.** Two loads at once and the diff
   is unreadable.
 - **Confirm by repeating.** Run OFF→ON→OFF and check the same byte tracks the
   load both ways. A single capture can coincide with a temperature tick.
-- Note in `docs/reverse-engineering-log.md` which physical load you flipped —
-  months from now `0x18FF5021 bit 3` means nothing without that.
+- **Write down which physical load you flipped**, next to the capture. Months
+  from now `0x18FF5021 bit 3` means nothing without it.
 - `cansniffer -c can0` is great for a live feel: it highlights bytes as they
   change, so you can often *see* the frame react as you tap the screen.
 

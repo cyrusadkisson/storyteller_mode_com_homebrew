@@ -56,7 +56,7 @@ Per the PV1100 manual, the round **M12 (5‑pos, A‑coded)** carries Ethernet
 | 6 | CAN1 High | 19 | CAN2 High |
 | 7 | Battery (+V) | 8 | Ground |
 
-### As actually wired in this van (CONFIRMED 2026‑08‑11)
+### As wired in the 23-pin connector
 
 All 7 wires in the populated 23‑pin AMPSEAL, decoded against the manual:
 
@@ -139,7 +139,7 @@ strands. That is adequate on a bench and marginal in a vehicle: the contact
 area is small, and vibration or a disturbed harness can let the blade migrate
 off the conductor.
 
-**Observed on this van:** after the companion board was mounted, CAN1 went
+**What this looks like:** after the companion board was mounted, CAN1 went
 intermittent — the adapter's activity LED alternating between solid and
 blinking as the loom was moved. Five of six taps were solid; one had gone
 finicky. The failure presents as a **total CAN1 dropout**, which is easy to
@@ -205,7 +205,7 @@ They use different hardware and don't combine.
 
 ---
 
-## CONFIRMED: the van uses BOTH CAN buses, split by function (2026-08-11)
+## Both CAN buses are used, split by function
 
 Toggling the inverter while capturing CAN1 produced **zero new CAN ids and zero
 PDM byte changes**. The bus carried nothing about it at all.

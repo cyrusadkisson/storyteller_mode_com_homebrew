@@ -19,7 +19,7 @@ Build with `pio run` from this directory; flash with `pio run -t upload`.
   `default_envs = app`. **Set your own WiFi credentials before flashing** —
   they are two plain lines near the top of `examples/app/app.ino`
   (`AP_SSID` / `AP_PASS`). They are compiled in and published in this public
-  repo by owner decision, so anyone in radio range who has read the source can
+  repo deliberately, so anyone in radio range who has read the source can
   otherwise join and operate the van.
 - `examples/companion/` — the serial-command precursor to `app`. Same two-bus
   core and commands, driven over the USB serial console instead of WiFi.

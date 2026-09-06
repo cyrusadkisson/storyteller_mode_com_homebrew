@@ -81,11 +81,11 @@ The tar holds the running system:
   variables to bus traffic.
 - `app/MODBUS-master` / `MODBUS-slave` / `modbus-app` — MODBUS side.
 - `app/BTApp`, `app/ConnectedDisplay`, `app/NetworkLauncher` — Bluetooth (BLE +
-  SPP) and network apps. **Present but not active on this unit.**
+  SPP) and network apps. **Present in the firmware, but not enabled.**
 - `config/config0/configurationInfo/DeviceInformationAll.pbuff` — the **signal
   dictionary** (protobuf). The Rosetta Stone for building our own client.
 
 ## Connectivity reality (measured)
 
-See `docs/reverse-engineering-log.md`. Short version: USB port is host-only
+See [`design-notes.md`](design-notes.md). Short version: USB port is host-only
 (update sticks), Wi-Fi/BT radios inactive, **CAN bus is the path**.

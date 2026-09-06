@@ -1,52 +1,83 @@
 # CAN2 — battery, inverter and charger
 
-The van runs **two CAN buses split by function**. This documents the second one.
+The van runs two CAN buses split by function. This one carries everything to do
+with energy.
 
 | Bus | Pins | Carries |
 |---|---|---|
-| CAN1 | 5 / 6 | PDM loads, tanks, climate — see [`pdm-control.md`](pdm-control.md), [`climate-control.md`](climate-control.md) |
+| CAN1 | 5 / 6 | PDM loads, tanks, climate — [`pdm-control.md`](pdm-control.md), [`climate-control.md`](climate-control.md) |
 | **CAN2** | **18 / 19** | **battery, inverter, charger, shore power** |
 
-Established the hard way: the Lithionics and inverter source addresses appear in
-the firmware's CAN DB but **never once** in dozens of CAN1 captures, including
-while operating the inverter from the panel. Tapping pins 18/19 found them
-immediately. See [`hardware-and-tap.md`](hardware-and-tap.md).
+Both run at 250 kbit/s. CAN2 is much quieter — 29 IDs at roughly 49 frames/s,
+against CAN1's ~450.
 
-Also 250 kbit/s. 29 ids, ~49 frames/s — much quieter than CAN1's ~450.
+The Lithionics and inverter source addresses appear in the firmware's CAN
+database but never on CAN1, including while operating the inverter from the
+panel. They are only on pins 18/19. Wiring is in
+[`hardware-and-tap.md`](hardware-and-tap.md).
 
-### T-2CAN-FD CAN-B on CAN2 (2026-08-24)
+### Two things called "the app"
 
-The companion board's **B channel (ESP32 TWAI, GPIO 6/7)** is now physically
-tapped into CAN2 (pins 18/19, the second green/yellow pair; its own isolated
-SGND tap on the van ground — the two channels are independently isolated).
-Verified live with a listen-only probe at 250 kbit/s: BMS (`0x46`) status
-frames and inverter/charger (`0xE1`) frames are on the wire exactly as
-documented above, plus `0x19FFD7E1` as a ~15 Hz heartbeat. This completes the
-two-bus hardware — CAN-A ↔ CAN1 (control), CAN-B ↔ CAN2 (energy).
+Both appear below and they are easy to confuse:
+
+- **the phone app** — Lithionics' own Bluetooth app, which talks directly to the
+  BMS
+- **the companion app** — this project's web UI, served by a board on CAN2
+
+Where a value is checked against both, that is two independent routes to the
+same number.
+
+### The system
+
+A 48 V nominal house pack: sixteen LiFePO₄ cells in series, about 3.3 V each,
+53.2 V charged. Nameplate **173 Ah ≈ 8.4 kWh**. A Lithionics BMS sits between
+the cells and the van and can open a **contactor** — a large relay — to protect
+the pack. When it opens the van loses all house power instantly.
+
+**The BMS protects per cell, not per pack.** That fact explains the failure in
+Part 3, and it is the single most useful thing on this page.
+
+> Most Storyteller vans have the dual 16.8 kWh system: two packs, 32 cells. The
+> frame decoding here comes from a single-pack van. Pack-level frames should be
+> identical; the cell monitor almost certainly is not. See
+> [Part 4](#part-4--not-yet-established).
+
+---
+
+# Part 1 — What is on the bus
 
 ## Nodes
 
-Identified from J1939 address claims (`0xEEFF`), which carry the 64-bit NAME:
+From J1939 address claims (`0xEEFF`), which carry the 64-bit NAME:
 
 | SA | NAME decode | Node |
 |---|---|---|
-| `0x46` | mfg **1069**, function 137, ECU instance **1** | **Lithionics BMS** |
-| `0x8E` | mfg **1069**, function 144, ECU instance **2** | **cell monitor** — same manufacturer |
+| `0x46` | mfg **1069**, function 137, ECU instance **1** | Lithionics BMS |
+| `0x8E` | mfg **1069**, function 144, ECU instance **2** | cell monitor |
 | `0xE1` | — | inverter / charger |
 | `0xF2` | — | shore-power circuit capacity |
 
 `0x46` and `0x8E` share a manufacturer code and differ only in function and ECU
-instance, so they are two devices in the same battery system.
+instance: two devices inside the same battery system.
 
----
+## The frames worth reading
 
-## Battery — standard RV-C DC_SOURCE_STATUS
+| frame | carries |
+|---|---|
+| `0x19FFFD46` | pack voltage, pack current |
+| `0x19FFFC46` | pack temperature, state of charge, time remaining |
+| `0x19FFFB46` | state of health, capacity remaining |
+| `0x18FF938E`–`0x18FF968E` | the sixteen individual cell voltages |
+| `0x18FF918E` | lowest and highest cell |
+| `0x19FFD7E1` | AC line voltage, current, frequency |
+| `0x19FF95F2`, `0x19FF96E1`, `0x19FFC9E1` | shore-power limit |
+| `0x19FFD4E1`, `0x19FFC7E1`, and three more | nothing — see [stub frames](#stub-frames) |
 
-These are **not** proprietary. They decode with the published RV-C scale factors,
-and every field below was cross-checked against the Lithionics phone app or
-against arithmetic on another frame.
+## Battery — standard RV-C `DC_SOURCE_STATUS`
 
-### `0x19FFFD46` — DC_SOURCE_STATUS_1
+These decode with the published RV-C scale factors. Nothing proprietary.
+
+### `0x19FFFD46` — voltage and current
 
 | bytes | field | encoding |
 |---|---|---|
@@ -55,65 +86,67 @@ against arithmetic on another frame.
 | **2–3** | **DC voltage** | × 0.05 V |
 | **4–7** | **DC current** | 32-bit LE, 1 mA/bit, **offset −2 000 000 000** |
 
-Verified: `0x0428` = 1064 × 0.05 = **53.20 V**, which is exactly the 16 cells ×
-3.325 V reported by the app.
+`0x0428` = 1064 × 0.05 = **53.20 V**, which is sixteen cells at the 3.325 V the
+phone app showed at the same moment.
 
-> **SIGN CONVENTION: positive = current OUT of the pack (discharging).**
-> Confirmed against the panel with shore power disconnected — the wire read
-> `+0.70 A` at 53.20 V = **37.2 W**, and the panel simultaneously displayed
-> **−37 W**. Magnitude exact, sign inverted relative to the panel's display.
+> ### Sign convention
 >
-> An app must **negate this** to match what the panel shows the owner.
-> (Earlier revisions of this document labelled small positive values as
-> "charging". That was wrong — they were small discharges.)
+> **On the wire, positive means current flowing OUT of the pack — discharging.**
+>
+> With shore power disconnected the wire reads **+0.70 A** at 53.20 V = 37.2 W,
+> while the panel displays **−37 W**. Same magnitude, opposite sign.
+>
+> **Negate it to match what the panel shows.** The companion app does, so its
+> displayed values are the opposite sign to the raw frame: a draw is negative on
+> screen and positive on the wire.
 
-### `0x19FFFC46` — DC_SOURCE_STATUS_2
+### `0x19FFFC46` — temperature, charge, time remaining
 
 | bytes | field | encoding |
 |---|---|---|
 | **2–3** | **temperature** | × 0.03125, offset −273 → °C |
 | **4** | **state of charge** | × 0.5 % |
-| **5–6** | **time remaining** | minutes (`FF FF` when idle/unknown) |
+| **5–6** | **time remaining** | minutes; `FF FF` means unknown |
 
-Verified: `0xC8` × 0.5 = **100 %**, matching a freshly-charged pack. Time
-remaining confirmed by arithmetic — at 19.5 A it read `0x020A` = **522 min**,
-and 173 Ah ÷ 19.5 A = **8.9 h = 533 min**. Two independently decoded frames
-agreeing.
+`0xC8` × 0.5 = 100 % on a full pack. Time remaining checks out arithmetically:
+at 19.5 A it reads `0x020A` = 522 min, and 173 Ah ÷ 19.5 A = 8.9 h = 533 min.
 
-> **The factory panel misrenders the unknown sentinel.** The BMS sends
-> `FF FF` whenever it declines to estimate, which it does at low draw. The
-> stock screen prints that literally as **45d 12h** — because `0xFFFF` minutes
-> is 45.51 days. Observed directly: with the pack at ~70 % and a 31 W draw,
-> the panel showed 45d 12h while a correct calculation gives 8d 16h. If you
-> see 45 days on the panel, the BMS is saying "unknown", not "six weeks".
+> **The factory panel misreads the unknown sentinel.** The BMS sends `FF FF`
+> whenever it declines to estimate, which it does at low draw — exactly when the
+> answer would be most reassuring. The panel prints that literally as
+> **45d 12h**, because `0xFFFF` minutes is 45.51 days. Seen with the pack at
+> ~70 % and a 31 W draw, where the correct figure is 8d 16h.
+>
+> **45 days on the panel means "unknown", not six weeks.** The companion app
+> computes the figure from amp-hours and current instead.
 
-**`Ah` in `DC_SOURCE_STATUS_3` is capacity REMAINING, not pack size.** At
-~70 % SoC on this 173 Ah pack it reads ~121 Ah, and dividing it by the present
-current gives a time that matches. Do not treat it as the nameplate figure.
-
-### `0x19FFFB46` — DC_SOURCE_STATUS_3
+### `0x19FFFB46` — health and remaining capacity
 
 | bytes | field | encoding |
 |---|---|---|
 | **2** | state of health | × 0.5 % |
 | **3–4** | **capacity remaining** | Ah |
 
-Verified: `0xAD` = **173 Ah** at 100 %. The app reported 96.1 Ah at 55 %, which
-is internally consistent. **This is an ~8.4 kWh, 48 V nominal pack.**
+`0xAD` = 173 Ah at 100 %. At 95 % it reads 164.5 Ah, and 164.5 / 0.95 = 173.2.
+
+**This is capacity remaining, not pack size.** Total capacity can be derived as
+`Ah ÷ (SoC/100)`, which is how the companion app computes time-to-full without
+hard-coding a nameplate figure — useful on a pack whose real capacity has
+dropped.
 
 ### Other Lithionics frames (SA `0x46`)
 
-`0x18FF8046`, `0x18FF8146`, `0x18FF8246`, `0x18FF8346`, `0x19FEA546` — partially
-decoded. `0x18FF8146` bytes 1–2 and 3–4 both carry × 0.05 V values matching the
-pack and bus voltages; `0x18FF8346` bytes 1–2 = `0x0480` × 0.05 = **57.6 V**,
-matching the app's "CAN Charger Voltage". `0x19FEC746/C946/CA46` are J1939
-diagnostics (DM1/DM2/DM3).
+`0x18FF8146` bytes 1–2 and 3–4 carry × 0.05 V values matching pack and bus
+voltage. `0x18FF8346` bytes 1–2 = `0x0480` × 0.05 = **57.6 V**, matching the
+phone app's "CAN Charger Voltage". `0x19FEC746` / `C946` / `CA46` are J1939
+diagnostics (DM1/DM2/DM3). `0x18FF8046`, `0x18FF8246` and `0x19FEA546` are
+undecoded.
 
 ---
 
-## Cell monitor (SA `0x8E`) — per-cell, CONFIRMED 2026-09-05
+## Cell monitor (SA `0x8E`)
 
-Six frames, `0x18FF918E` … `0x18FF968E`, all sharing a three-byte prefix:
+Six frames, `0x18FF918E` … `0x18FF968E`, sharing a three-byte prefix:
 
 ```
 01 02 10 …
@@ -122,150 +155,112 @@ Six frames, `0x18FF918E` … `0x18FF968E`, all sharing a three-byte prefix:
       ^^ 0x10 = 16 = the pack's cell count
 ```
 
-Four of the six have an identical shape, and four bytes each gives sixteen:
+### The sixteen cell voltages
+
+| frame | cells | payload |
+|---|---|---|
+| `0x18FF938E` | 1–4 | bytes 4–7 |
+| `0x18FF948E` | 5–8 | bytes 4–7 |
+| `0x18FF958E` | 9–12 | bytes 4–7 |
+| `0x18FF968E` | 13–16 | bytes 4–7 |
+
+**`cell V = 2.00 + byte/100`.** Resolution is 0.01 V, and it truncates.
+
+With one weak cell in the pack, the bus and the phone app read the same thing:
 
 ```
-0x18FF938E   01 02 10 00 | 84 84 84 84      cells  1-4  ?
-0x18FF948E   01 02 10 00 | 84 84 84 84      cells  5-8  ?
-0x18FF958E   01 02 10 00 | 84 84 84 84      cells  9-12 ?
-0x18FF968E   01 02 10 00 | 84 84 84 84      cells 13-16 ?
-```
-
-Proposed scaling: **cell V = 2.00 + byte/100**, so `0x84` = 132 → **3.32 V**.
-Sixteen of those gives 53.1 V, against **53.20 V** decoded independently from
-`DC_SOURCE_STATUS_1`. Agreement to within rounding, by two unrelated routes.
-
-`0x18FF918E` and `0x18FF928E` have a different shape. **`0x18FF918E` byte 7 is
-now confirmed as the LOWEST cell voltage** (see below); bytes 5 and 6 are the
-highest and the average in some order, not yet separated.
-
-> **RESOLVED 2026-09-05: they are per-cell values.** The doubt is kept here
-> because how it resolved is worth remembering.
->
-> On 2026-08-12, at 62 % SOC under a 1.4 kW load, the phone app showed a mix of
-> 3.25 V and 3.26 V while all sixteen bus bytes read an identical `0x7D`. Two
-> explanations fitted equally: 0.01 V truncation hiding a 0.01 V spread, or the
-> sixteen bytes being one aggregate replicated sixteen times. **A one-count
-> spread cannot separate those**, so the question stayed open — correctly.
->
-> It needed a cell far enough from its neighbours that truncation could not be
-> the explanation. Cell 9 eventually provided one. See the capture below.
-
-**Cell 9 has collapsed — CONFIRMED 2026-09-04.** An earlier drawn-down test
-(2026-08-12) showed cell 9 in line with the rest of the pack, and this document
-carried "cell 9 is fine" for three weeks on the strength of it. That was wrong,
-and the way it was wrong is worth keeping: it was **one reading, at one state of
-charge, under one load.** A cell that fails near its floor looks ordinary
-everywhere else.
-
-Read from the Lithionics phone app with the system dead (2026-09-04):
-
-| field | value |
-|---|---|
-| **Cell 9** | **2.80 V** |
-| the other fifteen cells | 3.11 – 3.15 V (avg 3.13) |
-| Lowest / Highest cell | 2.80 / 3.15 |
-| Balance Map | `0000` |
-| SOC / Voltage / Current | 80 % / 49.9 V / 0.6 A |
-| Remaining | 138.3 Ah |
-| Highest recorded temp | 206 °F |
-| Serial | ND050223054 |
-| Status / last status | `000114` / `000034` |
-
-Cell 9 sits **0.33 V below** its neighbours, while the rest of the pack is only
-moderately low. That is a failed cell, not an imbalance — and the balance map
-reads `0000`, so the BMS is not attempting to correct it.
-
-**This is the cause of the shutdowns.** Lithionics protects *per cell*, so the
-BMS opens the contactor when cell 9 reaches its undervoltage floor while the
-other fifteen still hold useful charge and the pack still reads ~50 V. Every
-shutdown therefore looks like a healthy battery dying instantly, and the SOC
-gauge — which is not lying — keeps reporting the charge those fifteen cells
-really do contain.
-
-Usable capacity is now set by cell 9 alone, not by the 138 Ah the app reports.
-
-### The capture that settled it (2026-09-05)
-
-Taken live off CAN2 by the companion board, with cell 9 depressed and the
-Lithionics app open beside it at the same moment:
-
-```
-01 02 10 00 45 7D 7D 7B     0x18FF918E
-01 02 10 40 00 00 47 84     0x18FF928E
 01 02 10 00 7D 7D 7D 7D     0x18FF938E   cells  1-4
 01 02 10 00 7D 7D 7D 7D     0x18FF948E   cells  5-8
-01 02 10 00 7B 7D 7D 7D     0x18FF958E   cells  9-12   <- 0x7B
+01 02 10 00 7B 7D 7D 7D     0x18FF958E   cells  9-12
 01 02 10 00 7D 7D 7D 7D     0x18FF968E   cells 13-16
 ```
 
-`0x7B` = 123 → **3.23 V**; `0x7D` = 125 → **3.25 V**. The app read cell 9 at
-3.23 V and the other fifteen at 3.25 V. Four results from one capture:
+`0x7B` = 123 → 3.23 V, `0x7D` = 125 → 3.25 V, against the app's 3.23 V for cell
+9 and 3.25 V for the rest.
 
-| result | how it follows |
-|---|---|
-| The sixteen bytes are **per-cell values** | one byte differs from the other fifteen — a replicated aggregate cannot do that |
-| Scaling **cell V = 2.00 + byte/100** is right | 123 → 3.23 and 125 → 3.25 reproduce the app exactly, by an independent route |
-| Frame→cell **ordering** is as proposed | the odd byte is `958E` byte 4, and cell 9 is the known low cell |
-| **`0x18FF918E` byte 7 = lowest cell voltage** | it reads `0x7B` (3.23) while bytes 5-6 read `0x7D` (3.25), against the app's Lowest 3.23 / Highest 3.25 / Average 3.25 |
+> **A uniform pack tells you nothing about this frame.** At high state of charge
+> sixteen healthy cells sit within one count of each other, and one count is also
+> what truncation can hide. Sixteen identical bytes are the normal reading, not
+> evidence of anything. The decode is only testable when a cell is genuinely
+> apart from the others.
 
-**Byte 7 of `0x18FF918E` is the operationally useful one.** It is the minimum
-cell voltage, in one byte, broadcast continuously — and it is the quantity the
-BMS actually opens the contactor on. Watching a failing cell does not require
-scanning sixteen bytes; it requires watching one.
+### `0x18FF918E` — the summary frame
 
-Bytes 5 and 6 both read `0x7D` in this capture, matching Highest and Average
-alike, so **which is which is not yet separated.** They diverge whenever the pack
-is less uniform than this.
+```
+01 02 10 00 47 76 77 67
+            ^^ ^^ ^^ ^^
+            |  |  |  +-- byte 7: lowest cell    0x67 = 3.03 V
+            |  |  +----- byte 6: highest cell   0x77 = 3.19 V
+            |  +-------- byte 5: tracks the median, not the mean
+            +----------- byte 4: probably temperature, byte − 40 = °C
+```
 
-Still undecoded on this node: `0x18FF918E` byte 4 (`0x45` = 69 here, against
-`0x4E`/`0x4F` = 78/79 in the older 3.32 V captures — it moves with the pack but
-not proportionally, so a temperature is plausible and unproven), and most of
-`0x18FF928E`, whose byte 3 read `0x40` against the app's "Last Code 40".
+**Byte 7 is the most useful byte on this node.** It is the minimum cell voltage,
+broadcast continuously, and it is the quantity the BMS opens the contactor on.
+Watching for a failing cell takes one byte, not sixteen.
 
-### This overturns an earlier conclusion in this document
+Byte 5 read 3.18 V where the true mean was 3.173 and the median was 3.18 — one
+observation, so treat it as a lead. Byte 4 read `0x47` = 71 → 31 °C with the pack
+at 86 °F, and `0x45` = 69 → 29 °C at ~84 °F: consistent across two readings,
+unproven.
 
-Until today this file stated that per-cell faults on this pack are invisible on
-CAN2 and visible only over Bluetooth, and that a parallel tap "cannot decode its
-way to cell health". **That was wrong.** It was a reasonable reading of the
-evidence available — sixteen bytes that had never once been seen to differ — but
-the evidence was simply not yet decisive, and it was stated far more firmly than
-that warranted.
+### `0x18FF928E`
 
-The voltage/SoC disagreement warning was built on that assumption. It still
-works, and it stays: it needs only frames the app already decodes. But it is now
-the *inferior* signal — an inference about a cell, where the bus reports the cell
-directly.
+```
+01 02 10 40 00 00 4A 84
+         ^^        ^^
+         |         +-- 0x4A = 74 → 34 °C, plausibly BMS temperature
+         +------------ 0x40 matched the phone app's "Last Code 40"
+```
 
-**Standing practice, updated:** the phone app is no longer the only place a
-failing cell is visible. `0x18FF918E` byte 7 carries it, and the companion board
-already captures the frame.
+The phone app reports BMS temperature several degrees above cell temperature,
+which fits byte 6 being the BMS's own sensor. Both are single observations. The
+rest of this frame is undecoded.
 
 ---
 
-## Inverter / charger (SA `0xE1`)
+## Inverter and charger (SA `0xE1`)
 
-### `0x19FFD7E1` — AC line status (10 Hz, the busiest frame)
+### `0x19FFD7E1` — AC line status
+
+The busiest frame on this bus, about 10 Hz.
 
 | bytes | field | encoding | observed |
 |---|---|---|---|
-| **1–2** | **AC RMS voltage** | × 0.05 V | **119.8 – 120.9 V** |
-| 3–4 | AC current | offset ~32000, scale unconfirmed | tracks load inversely |
-| **5–6** | **frequency** | ÷ 128 Hz | **59.91 – 60.09 Hz** |
+| **1–2** | **AC RMS voltage** | × 0.05 V | 119.8 – 120.9 V |
+| 3–4 | AC current | offset-encoded; scale not established | tracks load inversely |
+| **5–6** | **frequency** | ÷ 128 Hz | 59.91 – 60.09 Hz |
 
 Two fields with unrelated scale factors both landing on textbook North American
-shore power is strong evidence the decode is right.
+shore power.
 
-### `0x19FEA3E1`
+Bytes 3–4 sit around an offset and move *inversely* with load. Across a load
+test with byte 4 constant at `0x7C`:
 
-Bytes 3–4 = × 0.05 V = **53.20 V**, matching the pack voltage from the BMS via a
-different node. **Byte 5 tracks AC load** — `14` at idle, rising to `116` with
-the A/C running. Likely AC current × 0.1 (= 11.6 A, plausibly under the 15 A
-shore limit), **unconfirmed**.
+| byte 3 | 16-bit LE | condition |
+|---|---|---|
+| `F9` | 31993 | idle |
+| `E4`, `E3` | 31972, 31971 | A/C fan only |
+| `DC` | 31964 | |
+| `70`, `5D`, `5A`, `56` | 31856 … 31830 | compressor running |
 
-### Shore-power limit ("branch amps") — CONFIRMED, in three frames
+Swing is 163 counts idle to full — the right magnitude for the 15 A shore limit
+in force, but the scale factor is not established. At 0.1 A/bit that would be
+16.3 A, slightly over the limit that was set.
 
-Changing the panel setting from 20 A to 15 A moved all three:
+*To settle it: set branch amps to a very different value, load to the limit, and
+see whether the loaded reading tracks it.*
+
+### `0x19FEA3E1` — DC side
+
+Bytes 3–4 = × 0.05 V = 53.20 V, matching pack voltage via a different node.
+Byte 5 tracks AC load — `14` at idle, `116` with the A/C running. Probably AC
+current × 0.1 (11.6 A), not established.
+
+### Shore-power limit — "branch amps"
+
+The panel setting that caps draw from a pedestal. Changing it from 20 A to 15 A
+moves the same value in three frames:
 
 | frame | byte | 20 → 15 |
 |---|---|---|
@@ -273,11 +268,14 @@ Changing the panel setting from 20 A to 15 A moved all three:
 | `0x19FF96E1` | 3 | `0x14` → `0x0F` |
 | `0x19FFC9E1` | 7 | `0x14` → `0x0F` |
 
-### The inverter and charger STATUS frames are stubs — do not rely on them
+Plain integer amps. **Reading it is solved; setting it is not** — all three are
+reports from the circuit-capacity and inverter nodes. Whatever the panel sends
+to change the setting has not been captured.
 
-Checked byte-by-byte across **four captures including a 20 A load event** (A/C
-compressor start, shore limit change). These five frames **never changed a
-single byte**:
+### Stub frames
+
+Five frames never change a single byte, checked across four captures including a
+20 A load event:
 
 | frame | payload | nominal meaning |
 |---|---|---|
@@ -287,171 +285,213 @@ single byte**:
 | `0x18FECAE1` | `05 42 FF FF FF FF FF FF` | diagnostics |
 | `0x19FECAE1` | `05 42 FF FF FF FF FF FF` | diagnostics |
 
-They are broadcast at 2 Hz and are **almost entirely `FF`, which is RV-C's
-"not available"**. The device announces itself on these DGNs without populating
-them.
+They broadcast at 2 Hz and are almost entirely `FF`, which in RV-C means "not
+available". The device announces itself on these DGNs without populating them.
 
-> **Consequence for a companion app:** reading `0x19FFD4E1` for inverter state
-> returns `01` forever regardless of what the inverter is doing. Do not build a
-> UI on these. **All live power data is in `0x19FFD7E1` (AC), `0x19FEA3E1` (DC)
-> and the BMS frames.**
+> **Reading `0x19FFD4E1` for inverter state returns `01` forever, whatever the
+> inverter is doing.** All live power data is in `0x19FFD7E1` (AC),
+> `0x19FEA3E1` (DC) and the BMS frames.
 
-The constant `0x7D` in `0x19FFCAE1` byte 4 never varies and is presumably a
-nameplate rating rather than a measurement.
-
-### `0x19FFD7E1` bytes 3–4 — AC current, offset-encoded
-
-Observed across the load test, with byte 4 constant at `0x7C`:
-
-| byte 3 | 16-bit LE | condition |
-|---|---|---|
-| `F9` | 31993 | idle |
-| `E4`, `E3` | 31972, 31971 | A/C fan only |
-| `DC` | 31964 | |
-| `70`, `5D`, `5A`, `56` | 31856 … 31830 | compressor running |
-
-It moves **inversely** with load, so it is offset-encoded around zero. Swing is
-**163 counts** from idle to full A/C — the right magnitude for the ~15 A shore
-limit in force at the time, but the exact scale factor is **unconfirmed**
-(163 counts would be 16.3 A at 0.1 A/bit, slightly over the set limit).
-
-*Test to pin it down: set branch amps to a very different value, load the system
-to the limit, and see whether the loaded reading tracks it.*
+The constant `0x7D` in `0x19FFCAE1` byte 4 is presumably a nameplate rating.
 
 ---
 
-## Measured: what the air conditioner actually costs
+# Part 2 — What the van draws
 
-Captured live, on shore power with the limit at 15 A and the pack at 100 %:
+Sign convention here is the wire's: positive is discharge.
 
-Sign convention below: **positive = discharge**, i.e. current leaving the pack.
+## Standing load
+
+| condition | draw |
+|---|---|
+| shore off, head unit on, no loads | **37 W** (~0.7 A) |
+| van fully shut down | lower, not measured |
+
+At 173 Ah × 53 V, a 37 W idle is roughly **ten days** of standing time.
+
+## What the air conditioner costs
+
+On shore power, limit at 15 A, pack at 100 %:
 
 | t | pack current | event |
 |---|---|---|
 | 0–12 s | 0.5 – 0.7 A | idle |
-| 12.75 s | 2.5 A | A/C switched on (fan) |
+| 12.75 s | 2.5 A | A/C on, fan only |
 | 13.25 s | 4.4 A | |
-| **22.25 s** | **19.6 A** | **compressor starts** |
+| **22.25 s** | **19.6 A** | compressor starts |
 | 22.75 s | **26.0 A** | inrush peak |
 | 23–39 s | 17 – 19.9 A | settled |
 
-The owner independently reported hearing the compressor start ~15 s before the
-end of a 40 s capture. It is at t = 22.25.
+**The pack supplies ~20 A even on shore power.** With the limit at 15 A shore can
+deliver about 1800 W; the A/C needs more, and the inverter makes up the
+difference from the battery. That is what the branch-amps setting is for, and why
+it matters on a pack with a weak cell.
 
-**The pack supplies ~20 A even while on shore power.** With the limit at 15 A,
-shore can deliver ~1800 W; the A/C needs more, and the inverter makes up the
-difference from the battery. That is what the branch-amps setting is for.
+**Off shore power the pack supplies all of it** — 26.6 A ≈ 1350 W steady, and on
+the order of 50 A during compressor inrush.
 
-**Off shore power the pack supplies all of it** — on the order of 50 A.
-
-### Voltage sag baseline — record this
+## Voltage sag
 
 | condition | pack voltage |
 |---|---|
-| idle, 100 % SOC | 53.20 V |
-| 19.8 A, 100 % SOC | **52.85 V** |
+| idle, 100 % | 53.20 V |
+| 19.8 A, 100 % | **52.85 V** |
 
-**0.35 V of sag under ~20 A at full charge, ≈ 0.022 V per cell.** That is
-healthy, and it is the reference point.
+**0.35 V of sag under ~20 A at full charge, about 0.022 V per cell.** That is a
+healthy pack, and it is a useful number to record on your own van while it is
+known good. Repeat it at 40–50 %: markedly worse sag under a comparable load is
+a weak cell showing itself, and you will have a before-and-after rather than a
+guess.
 
-> **The diagnostic:** repeat this measurement with the pack at 40–50 %. If sag
-> under a comparable load is dramatically worse, that is the weak cell showing
-> itself — and there is now a before-and-after rather than a guess.
+## Solar
 
-This also explains a BMS shutdown the owner experienced: an A/C start on a pack
-that was genuinely near-empty (the SOC gauge was reading ~55 % while cell
-voltages indicated far less) with one cell already at the floor. The BMS
-alarmed and opened the contactor, which is correct behaviour. The cell already
-at the floor was **cell 9**: the August event and the September events share a
-single root cause, confirmed on 2026-09-04.
+No solar controller appears on CAN2; the four source addresses are the ones in
+the Nodes table. The controller is standalone.
 
-### September shutdowns — CAUSE CONFIRMED: cell 9 (2026-09-04)
+Solar is still visible indirectly: it flows into the pack, and the BMS measures
+pack current, so with shore power and the alternator out of the picture it shows
+up as (pack current + house load).
 
-Two further total power losses with **no A/C and no fan running**, each leaving
-the gauge reading 75–80 %. The companion board's NVS pulse log (pack V and I
-every 5 min, surviving the power loss) captured the state between events:
+A 175 W array read 50–80 W in full sun with the pack near full — but a nearly
+full LiFePO₄ pack tapers, so that is what the battery would accept, not a ceiling
+on the array.
+
+---
+
+# Part 3 — A failed cell
+
+This is the section worth reading even if you never touch the bus, because the
+symptom is *"the battery died at 80 %"* and nothing on the factory screen
+explains it.
+
+## What it looks like
+
+The BMS opens the contactor when **any single cell** reaches its undervoltage
+floor. Both numbers you can see are averages:
+
+- **Pack voltage** is the sum of sixteen cells. One cell 0.3 V down moves it by
+  0.3 V — indistinguishable from a slightly lower state of charge.
+- **State of charge** describes what the pack as a whole holds. It has no way to
+  say "and one of them is empty".
+
+So both stay reassuring right up to the moment everything goes dark:
 
 ```
-50.40 V  -0.3 A   ->   50.00 V  0.0 A   ->   49.80 V  0.0 A   (over ~3.5 h)
-= 3.15 V/cell                    = 3.11 V/cell
+pack 50.4 V, gauge 80 %   <- looks fine
+one cell at its floor      <- what the BMS is watching
+contactor opens            <- total power loss
 ```
 
-**The current reads 0.0 A throughout** — but the van's standing load is ~37 W
-(≈0.7 A), so a closed contactor feeding the system would show it. Zero current
-means the contactor was already open: those voltages are open-circuit, the pack
-settling after a protection event, with the BMS still transmitting (which is why
-the bus showed voltage after a "dead" van).
+The gauge is not lying. 80 % is a fair description of what the other fifteen
+cells hold. **Usable capacity is set by the weakest cell alone**, not by the
+amp-hours reported.
 
-The pack average of 3.11–3.15 V/cell is low but not a shutdown threshold, and
-that was the puzzle: the pack looked too healthy to have tripped. **The per-cell
-screen resolved it — cell 9 at 2.80 V** (full reading in the cell-monitor
-section above). The BMS was protecting one collapsed cell, not a flat pack.
+## Spotting it
 
-This retires the stale-SOC theory that was carried here in the first draft of
-this section. The SOC gauge is **not** the problem: 80 % is a fair description of
-what the other fifteen cells hold. Averages hid a single-cell failure — both the
-pack voltage on the bus and the SOC percentage are averages, and cell 9 never
-appeared in either.
+A weak cell hides at high state of charge and only shows itself under load or
+near empty. One example pack, tracked over four days:
 
-**Why the log could not have caught it.** The pulse log records pack V and I,
-both aggregates. Cell 9 is 1/16th of the pack voltage: its 0.33 V collapse moves
-the pack reading by 0.33 V, indistinguishable from a slightly lower state of
-charge. No amount of aggregate logging separates those two, which is exactly why
-the app screen was the deciding instrument.
+| pack state | weak cell | the other fifteen | gap |
+|---|---|---|---|
+| 95 %, resting | 3.23 V | 3.25 V | 1 count |
+| 80 %, after 27 min of A/C | 3.03 V | 3.18 – 3.19 V | 16 counts |
+| dead, resting | 2.80 V | 3.11 – 3.15 V | 33 counts |
 
-**What the companion app can still do.** It cannot see cell health, but the
-shutdowns share a signature it *can* see: pack voltage sagging toward ~49–50 V
-while SOC still reads high. A warning on that disagreement (e.g. pack < 51 V
-while SOC > 50 %) would have flagged all three events in advance. That remains
-worth building — it is a proxy for "a cell is near its floor", not a cell
-monitor.
+At 95 % it is a single count — indistinguishable from rounding. **Check when the
+pack is worked, not when it is full.**
 
-**Standing rule while cell 9 is unrepaired:** usable capacity is far below the
-138 Ah reported, and a shutdown can arrive at any indicated SOC. The fix is a
-pack service conversation with Storyteller/Lithionics, not a software change.
+Other signs in the same pack: the **balance map read `0000`**, meaning the BMS
+was not even attempting to correct the imbalance, and highest recorded
+temperature was 206 °F.
 
-Evidence (local, git-ignored): `images/Screenshot_20260904-130158.png` (NVS pulse
-log), `images/Screenshot_20260904-131516.png`, `-131523.png`, `-131527.png`
-(Lithionics per-cell and status screens).
+## A shutdown, start to finish
 
-## Solar — RESOLVED (2026-08-12)
+One event logged end to end on CAN2. Times UTC. Sign is the companion app's, so
+negative is a draw.
 
-No solar controller node was found on CAN2 — the four source addresses are the
-BMS (`0x46`), cell monitor (`0x8E`), inverter/charger (`0xE1`) and circuit
-capacity (`0xF2`). The controller on this van is standalone, and that is fine:
-the array works, and that is all that needed answering.
+| UTC | event | pack | current |
+|---|---|---|---|
+| 15:50:17 | **roof A/C switched on** | 51.30 V | −0.7 A |
+| 15:50:53 | voltage/charge warning | 50.90 V | −21.3 A |
+| 15:54 – 16:14 | A/C running | 50.60 → **50.40 V** | −25.7 → −27.0 A |
+| 16:13:25 | weak-cell warning, naming cell 9 at 3.05 V | 50.40 V | −26.7 A |
+| **~16:17** | **BMS opens the contactor** | — | −26.6 → **0.0 A** |
+| 16:19 – 16:44 | dead; pack resting, BMS still transmitting | 50.60 V | 0.0 A |
+| 16:48:47 | charging begins, warnings clear | 51.40 V | **+28.9 A** |
 
-**The array is 175 W nominal; ~50–80 W was observed in full sun — but the pack
-was near full at the time**, and a nearly-full LiFePO₄ pack tapers. So 50–80 W
-is what the battery would *accept*, not a ceiling on what the array can
-produce. True array output is still unmeasured, and it is fine for it to stay
-that way — the panel works, which is all that needed answering.
+**The trigger is the air conditioner running off the inverter.** Standing load is
+−0.8 A. The A/C pulls **−26.6 A ≈ 1350 W straight from the pack**. Under that
+load the weak cell reached its floor in 27 minutes, while the pack average sat at
+50.4 V and the gauge read 80 %.
 
-There was no bus mystery to solve: solar flows into the pack and the BMS
-measures pack current, so solar is visible indirectly as (pack current + house
-load) whenever shore power and the alternator are out of the picture. Nothing
-further to decode.
+**Warning was available 27 minutes ahead**, from pack-level frames alone, and
+4 minutes ahead from the cell frames with the cell named.
 
-### Standing loads
+> **How to tell a dead van from a quiet one.** The BMS keeps transmitting after
+> the contactor opens, so the bus still shows a plausible pack voltage. The
+> giveaway is **current reading exactly 0.0 A while a standing load should be
+> drawing 0.8 A.** Voltage alone will fool you.
 
-| condition | draw |
+## Reading cell voltages around a shutdown
+
+Two readings that look contradictory and are not:
+
+```
+16:13   3.05 V   under 26.6 A load
+  |     (~4 more minutes of load — the cell falls to its cutoff, unsampled)
+~16:17  contactor opens
+  |     (at rest, the cell recovers)
+16:33   3.03 V   at rest, 0.0 A
+```
+
+The later reading is *lower* despite the load being gone. Two effects run
+opposite: removing the load **raises** terminal voltage by the IR drop, while the
+~1.8 Ah taken out during those last four minutes **lowers** it. Near the knee of
+a LiFePO₄ curve — where a failing cell lives — a little charge moves voltage a
+lot, so the depletion outweighed the recovery. Two counts is close to the 0.01 V
+measurement floor in any case.
+
+> **What would be different:** a cell falling *while genuinely at rest*, across a
+> stretch with no current at all. That is self-discharge, and it means an
+> internal short rather than a tired cell.
+>
+> **To tell them apart: two cell readings about fifteen minutes apart while the
+> system is dead.** Rising is ordinary recovery. Flat or falling is a short.
+
+## What to do about it
+
+- **A shutdown can arrive at any indicated state of charge.** Do not plan around
+  the gauge.
+- **Running the roof A/C off the inverter ends in a shutdown in roughly half an
+  hour.** On shore power it is a different situation, because the pack is not
+  supplying the load — so the branch-amps setting is worth getting right.
+- The fix is a pack service conversation with Storyteller or Lithionics. There is
+  no software remedy for a failed cell.
+
+## Watching for it automatically
+
+Two warnings the companion controller runs on the board itself, so they work with
+no phone connected, and writes to a flash log that survives a total power loss:
+
+| warning | trips on | why |
+|---|---|---|
+| **weak cell** | lowest cell < 3.00 V, **or** pack spread ≥ 0.10 V | the quantity the BMS itself trips on |
+| **voltage / charge** | pack < 51.0 V while SoC > 50 % | pack-level frames only, so it still works if the cell frames go quiet |
+
+Both use split trip and clear thresholds so a pack sitting on the line does not
+flap. The second is the weaker signal — an inference about a cell where the bus
+reports the cell directly — but it costs nothing and covers a different failure.
+
+---
+
+# Part 4 — Not yet established
+
+| item | state |
 |---|---|
-| shore off, head unit on, no loads | **37 W** |
-| van fully shut down | lower, not yet isolated |
-
-At 164 Ah × 53 V that 37 W idle is roughly ten days of standing time.
-
-### Formerly-open measurements — one closed, one reopened and answered
-
-**Solar: resolved (2026-08-12).** 175 W array, ~50–80 W real, nothing on the bus
-to decode.
-
-**Cell 9: reopened and confirmed bad (2026-09-04).** The 2026-08-12 drawdown put
-cell 9 "in line with the pack" and this document recorded it as resolved. Three
-weeks and two total shutdowns later the app showed it at **2.80 V against a
-3.11–3.15 V pack**. The earlier test was not wrong about what it measured; it
-was wrong to close the question on a single observation.
-
-One measurement item remains open on CAN2: capture `0x18FF938E`–`0x18FF968E`
-while cell 9 is depressed, to settle whether those sixteen bytes are per-cell
-values or a replicated aggregate.
+| **Dual-battery vans** | Most Storyteller vans have two 8.4 kWh packs, 32 cells. Pack-level frames should be unchanged; the cell monitor almost certainly differs. The phone app's module page has columns headed 1 and 2, so the protocol anticipates a second module, but it has not been observed. |
+| **Setting branch amps** | Reading it is solved. The frame the panel sends to change it has not been captured. |
+| `0x18FF918E` byte 5 | Tracks the median in one observation. Needs a pack that is not uniform. |
+| `0x18FF918E` byte 4 | Temperature on two consistent readings. |
+| `0x18FF928E` | Mostly undecoded. |
+| `0x19FFD7E1` bytes 3–4 | AC current scale factor. |
+| `0x19FEA3E1` byte 5 | Probably AC current × 0.1. |

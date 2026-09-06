@@ -98,7 +98,7 @@ van** — all of this must be diff-confirmed on our own captures before use.
 | Sink drain (Drain) | PDM2 F8 | 6 | 1 (bits 2–3) | `0x08` | ✓ DI9, hold-to-run, **parked manual** |
 | Aux | PDM2 F0 | 6 | 0 (bits 0–1) | `0x02` | ✓ DI4 — exterior perimeter lighting |
 | Recirc | PDM1 F0 | 7 | 2 (bits 4–5) | `0x20` | ✓ DI1 — momentary; HU auto-timer ~10 s |
-| Awning light | PDM1 F0 | 7 | 3 (bits 6–7) | `0x80` | DI5 — **UNCONFIRMED.** The awning and its lights are physically absent from this van, so only the head unit's DO5 level byte can be watched; nothing can be seen to switch. |
+| Awning light | PDM1 F0 | 7 | 3 (bits 6–7) | `0x80` | DI5 — **untested.** The awning and its lights are absent from the van these captures come from, so only the head unit's DO5 level byte can be watched; nothing can be seen to switch. |
 
 Every slot checked so far matches his table byte-for-byte — his van ≠ this van
 was the open question, and the answer so far is "no difference." Input-spoof
@@ -119,7 +119,7 @@ commanded DO5). Toggle switches (cabin/cargo/water pump) work fine off a
 single pulse. Control of hold-to-run loads (sink drain now; awning motor
 untested, do not assume) requires the **cut-and-stand-in** architecture
 (rewrite the panel's commands in flight), which this parallel tap cannot do.
-Drain parked manual-only by owner decision.
+The drain is therefore left as a manual control.
 
 Delta worth chasing: the live F0 byte-5 value moved between sessions (`A4` →
 `A5`), another digital input is changing — the F0 stream is dynamic, exactly why
@@ -192,9 +192,9 @@ beats BLE" call we already made.
 Contact: the author offered publicly (March 2025) to share and collaborate in
 the Insiders group thread.
 
-## 6. Full re-audit (2026-08-24) — what his code actually does
+## 6. What ModeWifi's code does
 
-Every file read end-to-end. Corrections and additions to the above:
+From reading every file end-to-end:
 
 - **His working transmit set is exactly three IDs**: the PDM input spoof
   (`0x14EF111E/1F`), the A/C command (`0x19FEF903`), and the vent command

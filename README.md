@@ -68,7 +68,8 @@ than oversights — reasons in [`docs/design-notes.md`](docs/design-notes.md):
   (those work by spoofing a wall switch), but not for A/C or vent changes. The
   app *does* follow the screen.
 - **No reading lights, no sink drain.** Neither can be held by a parallel tap.
-- **Awning is decoded but unverified** — this van doesn't have one.
+- **Awning is decoded but unverified** — the van it was worked out on doesn't
+  have one.
 
 ---
 
@@ -237,7 +238,7 @@ so after a shutdown you can read what the pack was doing on the way down:
 | [`pdm-control.md`](docs/pdm-control.md) | how loads are switched |
 | [`climate-control.md`](docs/climate-control.md) | A/C, thermostat, vent, Rixen |
 | [`can-map.md`](docs/can-map.md) · [`signal-dictionary.md`](docs/signal-dictionary.md) | the wire-level message and signal maps |
-| [`reverse-engineering-log.md`](docs/reverse-engineering-log.md) | how all of it was worked out |
+| [`capture-session.md`](docs/capture-session.md) | runbook: getting on your own bus and mapping a load |
 | [`t2can-bench.md`](docs/t2can-bench.md) | board bring-up, and two bugs in LILYGO's stock example |
 
 ```

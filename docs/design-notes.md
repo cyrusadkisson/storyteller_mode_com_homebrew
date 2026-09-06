@@ -1,7 +1,7 @@
 # Design notes — why it works this way
 
-Reasoning that used to sit in the README. None of it is needed to install or
-use the companion controller; all of it matters if you intend to change it.
+Why the companion controller works the way it does. None of this is needed to
+install or use it; all of it matters if you intend to change it.
 
 ---
 
@@ -71,8 +71,9 @@ the van's DC electrical system, which is why it was not built.
 
 ### Awning: decoded, unverified
 
-The awning is physically removed from this van. The light is exposed as a switch
-and the head unit's command byte responds, but no light exists to observe. The
+The awning is absent from the van these captures come from. The light is exposed
+as a switch and the head unit's command byte responds, but no light exists to
+observe. The
 motor protocol is decoded and untested, and it **latches** — anything driving it
 needs a watchdog that writes zero.
 
@@ -87,7 +88,7 @@ point of it, and also the risk.
   pump **stays commanded until something writes `0x00`**. Software that sets a
   value and then crashes, disconnects, or is force-quit leaves a motor driving
   against its end stop or a pump running dry, indefinitely.
-- **Momentary vs latching is not predictable** from what a load does — this van
+- **Momentary vs latching is not predictable** from what a load does — the van
   has two pumps that behave oppositely. It must be observed per channel.
 - **Read-only first, always.** Bring the interface up listen-only
   (`tools/can_up.sh` refuses otherwise) and confirm the bus before transmitting.
@@ -99,15 +100,21 @@ a motor moving, not a heater igniting, not a pump running.
 
 ---
 
-## How claims are labelled
+## How channel evidence is recorded
 
-| label | meaning |
+[`data/pdm_channels.csv`](../data/pdm_channels.csv) carries an `evidence` column,
+because the difference matters before you drive something:
+
+| value | meaning |
 |---|---|
-| `CONFIRMED` | frame observed **and** the load seen to respond |
-| `CONFIRMED-FRAME` | frame certain, load could not be observed (the awning) |
-| `predicted` | derived from the firmware, untested |
+| `observed` | the frame was seen **and** the load responded |
+| `frame-only` | the frame is certain; the load could not be watched (the awning) |
+| `inferred` | from the firmware dictionary and the byte-equals-DO rule, untested |
+| `standing-feed` | a permanently energised circuit, not a control |
+| `unknown` | no name in the dictionary |
 
-See [`data/pdm_channels.csv`](../data/pdm_channels.csv).
+Anything below `observed` is a lead. Check it on your own van before relying on
+it, and especially before writing to it.
 
 ---
 
@@ -123,8 +130,7 @@ See [`data/pdm_channels.csv`](../data/pdm_channels.csv).
 | Battery | Lithionics BMS, reported over J1939 |
 | Firmware pkg | `.pv1` container: QNX boot image + gzip'd tar application + MCU hex |
 
-Full breakdown in [`architecture.md`](architecture.md); how it was worked out in
-[`reverse-engineering-log.md`](reverse-engineering-log.md).
+Full breakdown in [`architecture.md`](architecture.md).
 
 ---
 

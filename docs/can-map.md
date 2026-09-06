@@ -134,7 +134,7 @@ The map is bus-validated end to end.
 
 ---
 
-## Tank levels decoded and verified against the panel (2026-08-12)
+## Tank levels
 
 `0x19FFB7AF` (PGN 1FFB7, SA `0xAF`) is **multiplexed on byte 0 = tank instance**
 — the DB's `Rx_FWTankStatus` and `Rx_GrayTankStatus` share one CAN id.

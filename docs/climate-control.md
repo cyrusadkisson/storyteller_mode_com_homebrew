@@ -1,469 +1,343 @@
-# Climate control — decoded
+# Climate control — A/C, roof vent and hydronic heat
 
-Climate is a **separate subsystem** from the PDM loads. Different nodes,
-different source address for the head unit, and — unlike the PDM's continuous
-broadcast — an **acknowledged** request/response protocol.
+Climate is a separate subsystem from the PDM loads. Different nodes, a different
+source address for the head unit, and — unlike the PDM's continuous broadcast —
+an acknowledged request/response protocol.
 
-All scale/offset values below come from `Configuration.bin` (see
-[`can-map.md`](can-map.md)) and were **confirmed against live capture** on
-2026‑08‑11, cross‑checked against the owner's independently stated cabin
-temperature of 90 °F.
+Scale and offset values come from `Configuration.bin` (see
+[`can-map.md`](can-map.md)) and match live capture.
 
 ## Nodes
 
 | SA | Node |
 |---|---|
-| `0x03` | head unit, **climate** address (note: it uses `0x11` for the PDMs) |
-| `0x58` | A/C + vent controller |
-| — | Rixen hydronic heater, on standard 11‑bit ids `0x724`–`0x78A` |
+| `0x03` | head unit, climate address — it uses `0x11` for the PDMs |
+| `0x58` | A/C and vent controller |
+| — | Rixen hydronic heater, on standard 11-bit IDs `0x724`–`0x78A` |
 
-## Rixen hydronic heater
+## Three different value ranges
 
-### `0x724` — HC_Status (RX)
+Worth fixing in mind early, because mixing them up produces subtle bugs:
 
-| bytes | scale | meaning | observed |
-|---|---|---|---|
-| 0–1 | ×0.01 | **current temperature °C** | `5d0c` = 31.65 °C = 89.0 °F → `950c` = 32.21 °C = **90.0 °F** |
-| 2–3 | ×0.1 | **target temperature °C** | `6400` = 10.0 °C = 50 °F → `4201` = 32.2 °C = **90.0 °F** |
-| 4–5 | ×1 | (unidentified, stable `d403`) | |
-| 6 | bitfield ×8 | status flags — bit 3 set when heat requested | `00` → `08` |
-| 7 | ×1 | (unidentified) | |
+| subsystem | fan/level range |
+|---|---|
+| PDM outputs | 0–127 (`0x00`–`0x7F`) |
+| A/C fan | 0–255 |
+| Roof vent fan | 0–255; the panel sends up to `0xB9` (185), and the fan stops responding above roughly 200 |
 
-16‑bit fields are **little‑endian**.
+---
 
-`0x78A` bytes 2–3 mirror `0x724` bytes 0–1 (a status echo).
+# A/C thermostat
 
-### `0x788` — command, multiplexed on byte 0
+## `0x19FEF903` — thermostat command (head unit → A/C)
 
-Ten sub‑commands share this id, selected by byte 0. Payload starts at byte 1.
+**Sent on change only**, which is why it never appears in an idle capture.
 
-| mux | sub‑command | width | confirmed |
-|---|---|---|---|
-| `01` | **Set TempTarget** | 16‑bit, units 0.1 °C | ✅ raw 100 = 50 °F → raw 322 = 90 °F, echoed in `0x724` b2‑3 |
-| `02` | **Set FanSpeed** | 8‑bit | ✅ tracks the furnace: `0` → `15` on, `0` when switched away |
-| `03` | **Set Furnace** | 8‑bit | ✅ `0` → `1` on fuel heat, `1` → `0` on switch to electric |
-| `06` | Set Hot Water *(inferred)* | 1‑bit | present in the stream, **never observed changing** |
-| `0C` | **Send Amb Temp** | 16‑bit, ×0.03125, offset −273 → °C | ✅ 31.66 °C → 32.22 °C = 90.0 °F |
-
-`0C` is confirmed beyond doubt: no other sub‑command carries the
-`0.03125 / −273` scaling, and the decode lands exactly on the observed cabin
-temperature. Its value tracks `0x724` bytes 0–1 — **the head unit reads ambient
-from the A/C (`0x19FF9C58`) and relays it to the heater.**
-
-The remaining sub‑commands from the DB — Set Electric, Set Engine, Set Preheat,
-Send Eng Run, Send Prime Fuel Time — have not yet been observed changing, so
-their mux values are unassigned.
-
-## A/C thermostat
-
-### `0x19FEF903` — Tx Thermostat_Command (head unit `0x03` → A/C)
-
-**Sent on change only**, which is why it never appeared in idle captures.
-
-| bytes | field | scale | observed |
-|---|---|---|---|
-| 0 | instance | — | `01` |
-| 1 | mode nibble + 2×2‑bit fields | — | `10` |
-| 2 | fan / mode | — | `00` |
-| 3–4 | **heat setpoint** | ×0.03125, −273 → °C | 48.0 °F → **88.0 °F** |
-| 5–6 | **cool setpoint** | ×0.03125, −273 → °C | 75.0 °F → **72.0 °F** |
-
-Both setpoints travel in every command — heat and cool are set together.
-
-### Byte 1 decoded (2026‑08‑11)
-
-| bits | field | observed |
+| bytes | field | scale |
 |---|---|---|
-| **0–3** | **operating mode** | `0` = OFF, `1` = COOL — confirmed by switching the A/C on and off |
-| 4–5 | fan mode | `0` → `1` at the moment the fan was set by hand → **auto / manual** |
-| 6–7 | (unused so far) | always `0` |
+| 0 | instance | `01` |
+| 1 | operating mode + fan mode | see below |
+| 2 | fan speed | `0x64` low → `0xC8` high, range 0–255 |
+| 3–4 | **heat setpoint** | × 0.03125, offset −273 → °C |
+| 5–6 | **cool setpoint** | × 0.03125, offset −273 → °C |
 
-RV‑C defines the remaining modes as `2` heat, `3` auto, `4` fan‑only. Only `0`
-and `1` have been observed on this van.
+**Both setpoints travel in every command.** Heat and cool are set together.
 
-### Byte 2 = fan speed
+### Byte 1
 
-`0x64` (low) → `0xC8` (high). A **0–255** range, like the vent — *not* the
-PDM's 0–127.
+| bits | field | values |
+|---|---|---|
+| **0–3** | operating mode | `0` off · `1` cool · `2` heat · `4` compressor off, unit on |
+| 4–5 | fan mode | `0` auto · `1` manual |
+| 6–7 | unused | always `0` |
 
-### `0x19FFE258` Rx AC Unit Status echoes the command
+RV-C also defines `3` auto and `4` fan-only; only the values above have been
+seen on this van.
 
-The A/C mirrors mode, fan speed and both setpoints straight back. So — like the
-vent — **A/C writes are verifiable**: send, then read the echo.
+**The compressor is separately controllable.** The A/C screen has its own
+compressor switch, and it moves byte 1 between `0x01` (running) and `0x04` (unit
+on, cooling element off). The status echo mirrors byte 1, so compressor state is
+readable.
 
-### The compressor is autonomous — and invisible
+## Setpoints carry a ±2 °F deadband
 
-An 85 s capture in which the owner *heard* the compressor start ~30 s in
-contained **exactly one climate frame change**: the A/C being switched off at
-t = 77. Nothing at the 30 s mark, on any climate id.
+**The head unit does not send the number on the panel.** It builds a deadband
+around it, and only in the RV-C thermostat frame:
 
-Cabin was 91 °F against a 72 °F setpoint, so the unit was always going to run;
-the ~30 s delay is its own anti‑short‑cycle timer, not a command.
+| value | relationship to the panel |
+|---|---|
+| thermostat **cool** setpoint | panel **+ 2 °F** |
+| thermostat **heat** setpoint | panel **− 2 °F** |
+| Rixen target | panel exactly |
 
-> **The head unit sets mode, setpoint and fan. The A/C decides when to run the
-> compressor, and does not report it.** A companion app can show mode, setpoints,
-> fan speed and cabin temperature — but **cannot show whether the compressor is
-> actually engaged.**
+> **App rule: cool = displayed + 2, heat = displayed − 2, Rixen = displayed.**
+> Do not apply one blanket offset. An app that ignores this shows setpoints that
+> disagree with the panel beside it, which reads as a bug whichever number is
+> "right".
 
-**Correction 2026-08-24:** the compressor **is** independently controllable on
-this van. The A/C screen has a separate compressor "AC OFF"/"AC ON" switch, and
-pressing it changes `0x19FEF903` **byte 1**: `0x01` = A/C on (compressor runs),
-`0x04` = compressor AC OFF (unit stays on, cooling element off), `0x00` = unit
-off. The status echo `0x19FFE258` mirrors byte 1, so compressor state *is*
-readable (unlike the earlier conclusion). The earlier "invisible" conclusion
-likely missed this because the compressor-on/off UI was not exercised.
+This is a deadband, not a scale error. Compared in raw counts rather than
+rounded °F, the difference is a constant ~35 counts across the range:
 
-### CONFIRMED: the panel displays 2 °F lower than it transmits
+| Panel | Wire | Raw count | Correct raw for panel value | Delta |
+|---|---|---|---|---|
+| 67 °F | 69.0 °F | 9393 | 9358 | 35 |
+| 68 °F | 70.0 °F | 9411 | 9376 | 35 |
+| 70 °F | 72.0 °F | 9447 | 9412 | 35 |
 
-**Verified live 2026‑08‑12.** With the A/C running, the panel displayed a cool
-setpoint of **70 °F** while `0x19FEF903` bytes 5–6 carried **72.0 °F**. The
-owner read the number off the screen at the moment of capture, so this is not
-a misremembered value.
+Each panel degree is 18 raw counts, so the panel steps in whole °F. Watching a
+target move from 90 to 78 with the unit in heat shows both rules holding
+11 degrees apart — thermostat heat at −2 throughout, Rixen target unmodified,
+and the cool setpoint untouched, which confirms the two fields are independent.
 
-**The offset is specific to the RV‑C thermostat frame.** The Rixen does not do
-it: a target of 90 °F set on the panel produced exactly `90.0 °F` in
-`0x788[01]`. So this is the head unit's thermostat translation, not its
-temperature handling in general.
+The Rixen's trailing `.1 °F` is quantisation: it carries 0.1 °C units, so 78 °F
+→ 25.6 °C → 78.08 °F.
 
-> **A companion app must compensate**, or it will display setpoints that
-> disagree with the panel beside it — which reads as a bug regardless of which
-> number is "right".
+## `0x19FFE258` — A/C status
 
-### It is a constant offset, not a scale error (2026‑08‑12)
+The A/C mirrors mode, fan speed and both setpoints straight back, so **A/C
+writes are verifiable**: send, then read the echo.
 
-Tested across three setpoints, with the panel value read off the screen each
-time:
-
-| Panel | Wire | Offset | Raw count | Correct raw for panel value | Delta |
-|---|---|---|---|---|---|
-| 67 °F | 69.0 °F | **+2.0** | 9393 | 9358 | 35 |
-| 68 °F | 70.0 °F | **+2.0** | 9411 | 9376 | 35 |
-| 70 °F | 72.0 °F | **+2.0** | 9447 | 9412 | 35 |
-
-Compared in **raw counts** rather than the rounded °F conversion, the error is
-~35 counts at every setpoint. A scale error would grow with temperature; this
-does not.
-
-Each panel degree = **18 raw counts** (`9393 → 9411 → 9447`), so the panel steps
-in whole °F.
-
-> **App rule: `displayed = wire − 2 °F`** for the A/C cool setpoint.
-
-Likely deliberate rather than a bug — offsetting the command so the A/C's own
-hysteresis band centres on the requested temperature.
-
-**Limit of the evidence:** the test spans 3 °F. A scale error small enough to
-stay under half a degree across that range cannot be strictly excluded.
-
-**Still unknown: does the offset apply to the heat setpoint?** The heat field
-read 88 °F during the Rixen session, but the panel's A/C heat value was not
-recorded at the time.
-
-### `0x18E80358` — J1939 Acknowledgement (A/C `0x58` → head unit `0x03`)
+## `0x18E80358` — acknowledgement
 
 ```
 00 ff ff ff ff f9 fe 01
-^^ control = 0x00 = positive ACK      ^^^^^^^^ PGN 0x01FEF9 = 1FEF9
+^^ control 0x00 = positive ACK        ^^^^^^^^ PGN 0x01FEF9
 ```
 
-The A/C **acknowledges the Thermostat_Command by PGN**. Consequence for the
-companion app: **climate writes are verifiable.** Send a command, watch for the
-ACK. PDM load commands have no such handshake — they are fire‑and‑forget
-broadcasts.
+The A/C acknowledges the thermostat command by PGN. Climate writes can be
+verified two ways — the ACK and the status echo. PDM load commands have neither;
+they are fire-and-forget broadcasts.
 
-## Vent
+## What the A/C decides for itself
 
-### `0x19FEA603` — Tx Vent Control (head unit `0x03` → vent, SA `0x58`)
+The head unit sets mode, setpoint and fan. **The unit's own anti-short-cycle
+timer decides when the compressor actually starts**, and that delay — around
+30 seconds — produces no CAN traffic at all.
 
-**Fully decoded 2026‑08‑11** from a 60 s session covering fan on, two speed
-changes, air direction, fan off and close. **Eight commands, eight ACKs.**
+---
+
+# Roof vent
+
+## `0x19FEA603` — vent command (head unit → vent)
 
 ```
 02 15 B9 50 00 00 00 00
 ^^ instance (0x02)
-   ^^ 0x15 constant
-      ^^ FAN SPEED
-         ^^ MODE BITS
+   ^^ 0x15, constant
+      ^^ fan speed
+         ^^ mode bits
 ```
 
 | byte | field | detail |
 |---|---|---|
 | 0 | instance | `0x02` |
-| 1 | — | `0x15`, constant in every frame |
-| **2** | **fan speed** | `00` = off. Observed `2B`, `7D`, `B9` — exceeds `0x7F`, so a full **0–255** range (unlike the PDM's 0–127) |
-| **3** | **mode bits** | **bit 4** = vent open(1)/closed(0) · **bit 0** = air direction, in(1) · **bit 6** set in every frame (enable / manual flag) |
+| 1 | — | `0x15` in every frame |
+| **2** | **fan speed** | `00` = off; range 0–255 |
+| **3** | **mode bits** | bit 4 = lid open · bit 0 = air direction, 1 = in · bit 6 set in every frame |
 
-Observed sequence:
+**Fire once, not held.** A single frame starts the motion and the controller
+drives to position on its own. Every command is acknowledged on `0x18E80358`
+(control `0x00`, PGN `0x01FEA6`).
 
-| t | payload | action |
-|---|---|---|
-| 0.00 | `02 15 B9 50` | fan on |
-| 6.36 | `02 15 2B 50` | speed down |
-| 10.05 | `02 15 7D 50` | speed up |
-| 15.90 | `02 15 7D 51` | air **in** (bit 0 set) |
-| 33.90 | `02 15 00 51` | fan off (speed → 0) |
-| 38.78 | `02 15 00 41` | **close** (bit 4 cleared) |
+> **Send the full eight bytes.** Both this frame and the A/C's `0x19FEF903` are
+> 8 bytes, and both begin with an instance byte that is easy to omit. A 7-byte
+> vent command shifts every field by one: the fan does not respond at all. A
+> 7-byte A/C command runs the low fan and nothing else. Neither produces an
+> error — the frame is simply misread.
 
-Only two bits of byte 3 ever moved, which is what makes the assignment safe.
-
-**Confirmed on a second independent run (2026-08-11)** covering the full cycle
-including *both* air directions:
+A full cycle:
 
 | t | payload | action | status response |
 |---|---|---|---|
-| 0.00 | `02 15 00 51` | open | CLOSED → MOVING at 3.60 → OPEN at 14.13 (**~10 s**) |
-| 13.80 | `02 15 7D 51` | fan on, speed 125 | fan=125 |
-| 18.14 | `02 15 41 51` | speed 65 | fan=65 |
-| 23.65 | `02 15 41 **50**` | **air OUT** | status `OPEN+OUT` at 24.16 |
-| 39.18 | `02 15 41 **51**` | **air IN** | status `OPEN+IN` at 39.69 |
-| 53.15 | `02 15 00 51` | fan off | fan=0 |
-| 56.67 | `02 15 00 41` | close | *(capture ended)* |
+| 0.00 | `02 15 00 51` | open | closed → moving at 3.60 → open at 14.13 |
+| 13.80 | `02 15 7D 51` | fan on, speed 125 | fan = 125 |
+| 18.14 | `02 15 41 51` | speed 65 | fan = 65 |
+| 23.65 | `02 15 41 50` | air out | open + out at 24.16 |
+| 39.18 | `02 15 41 51` | air in | open + in at 39.69 |
+| 53.15 | `02 15 00 51` | fan off | fan = 0 |
+| 56.67 | `02 15 00 41` | close | |
 
-Both states of bit 0 are now directly observed — the earlier "out is inferred"
-caveat is resolved.
-
-**Fire‑once, not held.** A single frame starts the motion; the controller drives
-to position on its own. Every command acknowledged by `0x18E80358`
-(`control 0x00`, PGN `0x01FEA6`).
-
-### `0x19FEA758` — Rx Vent Status 2
+## `0x19FEA758` — vent status
 
 | byte | field |
 |---|---|
 | 0–1 | instance / constant, mirroring the command |
-| 2 | fan speed — echoes the command, but **oscillates between the setpoint and `0` on a rough 5–10 s cycle** while the command byte holds steady. Either the fan physically cycles, or this reports something other than the setpoint. **Unexplained.** |
-| **3** | **state flags** — bit 4 = open · **bit 3 = in motion** · **bit 2 = position not known** (see below) · bit 0 = air direction |
-| **4–5** | **temperature**, ×0.03125 offset −273 → 32–34 °C (≈90–93 °F), drifts while the fan runs |
+| 2 | fan speed — see the caveat below |
+| **3** | **state flags** — bit 4 open · bit 3 in motion · bit 2 position unknown · bit 0 air direction |
+| **4–5** | temperature, × 0.03125 offset −273 → °C |
 
-Close transit, fully timed:
+Byte 3 in practice:
 
-```
-38.78  close command sent
-42.89  byte3 = 0x09   bit 3 set  -> in motion
-53.41  byte3 = 0x01   bit 4 clear -> closed      (~15 s)
-```
+| value | state |
+|---|---|
+| `0x00` | closed |
+| `0x08` | moving |
+| `0x10` | open |
 
-Open transit: ~10–11 s, measured on two independent runs.
+Transit times: **open ~10–11 s, close ~15 s.**
 
-### Byte 3 bit 2 — the lid position can be UNKNOWN (2026-09-04)
+> **Status byte 2 does not report the setpoint reliably.** It oscillates between
+> the commanded speed and `0` on a rough 5–10 second cycle while the command byte
+> holds steady. Either the fan physically cycles or the byte reports something
+> else; unexplained either way.
+>
+> And **the setpoint is not on the bus while the fan is off** — the command is
+> fire-once and never re-broadcast, and status byte 2 reads `00`. An app can only
+> learn the speed while the fan runs, or remember what it set.
 
-The app reported the lid **open while it was physically closed**. The wire said
-so too: byte 3 read `0x14` — bit 4 (open) set, plus **bit 2, which had never
-been observed set in any earlier capture**.
-
-Two things ruled out the obvious explanations. Bytes 4–5 decoded to 29 °C
-(84 °F), a sane cabin temperature, so the frame and byte offsets were right.
-And commanding a close made the motor squeak and stop immediately — the vent's
-own limit sensing was working perfectly, so this was not a failed sensor.
-
-A full app-driven cycle then gave a clean mapping with bit 2 absent throughout:
+## The "in motion" flag lags the command by ~4 seconds
 
 ```
- 3–18 s   b3=00   closed, steady
- 21.4 s           open command sent
- 25.3 s   b3=08   in motion
- 35.8 s   b3=10   open, settled
- 43.8 s           close command sent
- 47.9 s   b3=08   in motion
- 58.4 s   b3=00   closed, settled
+open  command at 0.00   ->  moving at 3.60
+close command at 38.78  ->  moving at 42.89
 ```
 
-So `0x00` closed / `0x08` moving / `0x10` open is confirmed, and the close
-command **cleared bit 2 permanently** — the vent regained certainty by driving
-to a limit.
+**For about four seconds after a lid command the vent still reports its OLD
+position with the motion bit clear** — indistinguishable from "settled" unless
+you track that you just commanded it.
 
-**Reading:** bit 2 means the vent does not know where the lid is, and bit 4 is
-then stale or meaningless. The lid had last been moved from the factory panel,
-and the van has suffered three total power losses; a vent controller rebooting
-with no stored position fits the evidence.
+This causes a specific, repeatable bug. Any logic that mirrors the reported
+position back into its own command state will silently undo the command, and the
+next command — composed from that state — drives the lid the wrong way. Seen
+twice: a fan-on closed an open vent, and an airflow flip reopened a closing one.
 
-**This is one observation, so the meaning is inferred, not proven.** The app's
-behaviour does not depend on getting it exactly right: when bit 2 is set the
-position is reported as UNKNOWN rather than as a position, which is correct
-under the project's standing rule either way. The toggle stays enabled, because
-commanding a close is what re-homes the vent.
+Rules for anything driving this vent:
 
-*To confirm: check byte 3 after the next van power loss. Bit 2 reappearing
-would settle it.*
+1. Treat the lid as **three states** — closed, moving, open — not a boolean.
+2. Adopt the reported position **only when settled**, and treat the four seconds
+   after your own command as "moving" even though the vent does not say so.
+3. Compose the mode byte **per command** from discrete state. Carrying one shared
+   mutable mode word means every command re-sends whatever lid and direction bits
+   happen to be in it.
 
-### The "in motion" flag lags the command by ~4 s
+## Byte 3 bit 2 — the lid position can be unknown
 
-Visible in both runs above, and the cause of two app bugs:
+Bit 2 set means **the vent does not know where the lid is**, and bit 4 is then
+meaningless. Reported values are `0x14` — bit 4 apparently "open" plus bit 2 —
+while the lid is physically closed.
 
-```
-open  command at 0.00  ->  MOVING at 3.60   (3.6 s)
-close command at 38.78 ->  MOVING at 42.89  (4.1 s)
-```
+Commanding a close drives the lid to its limit, the vent regains certainty, and
+the bit clears for good.
 
-**For ~4 s after a lid command the vent still reports its OLD position, with
-bit 3 clear** — indistinguishable from "settled" unless you track that you just
-commanded it. Any logic that mirrors the reported position into its own command
-state will silently undo the command, and the next command sent (composed from
-that state) drives the lid the wrong way. Observed twice: a fan-on closed an
-open vent, and an airflow flip reopened a closing one.
-
-Consequences for anything driving this vent:
-
-1. Treat the lid as **three states** — closed / moving / open — not a boolean.
-2. Adopt the reported position **only when settled**, and treat the ~4 s after
-   your own command as "moving" even though the vent does not say so yet.
-3. Compose the mode byte **per command** from discrete state (lid, direction).
-   Carrying one shared mutable mode word means every command re-sends whatever
-   lid/direction bits happen to be in it.
-
-### Fan speed byte 2 — practical range
-
-The protocol range is 0-255 and the panel was observed sending up to `0xB9`
-(185). The fan stops responding above roughly **200**, so the app's slider is
-capped there. Note also that **the setpoint is not on the bus when the fan is
-off**: the command frame is fire-once and never re-broadcast, and status byte 2
-reads `00`. A companion app can only learn the speed while the fan runs, or
-remember what it set.
-
-## Still open
-
-- `0x19FDE203` (Vent Control 2) — **still never observed**, despite a session
-  covering fan on/off, two speed changes, air direction and open/close. All of
-  those went out on `1FEA6`. It may address a second vent this van does not
-  have, or a feature not exposed in this UI.
-- The thermostat heat setpoint reached **88 °F** while the Rixen target reached
-  **90 °F**. Either an intermediate value was captured mid‑adjustment, or A/C
-  heat and Rixen heat have different limits. Unresolved.
-- `0x788` mux `02` / `03` / `06` assignments are inferred from the DB ordering,
-  not confirmed by decode. Toggling fan speed and furnace separately would
-  settle them.
-- `0x789` HC_SetIO (bitfield + 32‑bit field) never observed.
-
+The likely cause is the controller losing stored position across a power
+interruption. This is a single observation, so the cause is inferred — but the
+correct handling does not depend on being right about it: **when bit 2 is set,
+report the position as unknown rather than reporting a position**, and keep the
+control enabled, because commanding a close is what fixes it.
 
 ---
 
-## Heat: source selection and the deadband (2026-08-12)
+# Rixen hydronic heater
 
-### Mode 2 = HEAT confirmed
+## `0x724` — heater status
 
-`0x19FEF903` byte 1 low nibble reached **`2`** when the overhead unit was set to
-heat. Observed values on this van are now `0` off, `1` cool, `2` heat.
-
-### "Fuel / elec / dual" is a source selector between two systems
-
-The panel's heat page engages the **Rixen** immediately, and a second control
-switches the source between `fuel`, `elec` and `dual`. On the wire that hands
-the job between two entirely separate subsystems:
-
-```
-switch to HEAT (fuel)          switch fuel -> elec
-  RIXEN[03] 0 -> 1  furnace ON   RIXEN[03] 1 -> 0  furnace OFF
-  RIXEN[01] -> 322  target 90F   RIXEN[02] -> 0    fan off
-  RIXEN[02] -> 15   fan speed    RIXEN[01] -> 1
-  THERMOSTAT mode -> 0 (OFF)     THERMOSTAT mode -> 2 (HEAT), fan 0x1E
-```
-
-The two are **mutually exclusive** in fuel and elec — only one is commanded at a
-time. `dual` presumably commands both; not yet captured.
-
-### Rixen sub-commands 01 / 02 / 03 confirmed
-
-Previously inferred from the DB's ordering, now proven by watching them change
-together with a known user action:
-
-| mux | sub-command | evidence |
+| bytes | scale | meaning |
 |---|---|---|
-| `01` | **Set TempTarget** | `1` → `322` = 90.0 °F, matching the displayed target |
-| `02` | **Set FanSpeed** | `0` → `15` with the furnace, → `0` when switched away |
-| `03` | **Set Furnace** | `0` → `1` on fuel heat, `1` → `0` on switch to elec |
+| 0–1 | × 0.01 | current temperature °C |
+| 2–3 | × 0.1 | target temperature °C |
+| 4–5 | ×1 | unidentified, stable `d403` |
+| 6 | bitfield | status flags — bit 3 set when calling for heat |
+| 7 | ×1 | unidentified |
 
-### The 2 °F offset is a DEADBAND, not a correction
+16-bit fields are little-endian. `0x78A` bytes 2–3 mirror `0x724` bytes 0–1.
 
-With a displayed target of **90 °F**:
+## `0x788` — heater command, multiplexed on byte 0
 
-| value | wire | relationship |
-|---|---|---|
-| Rixen target (`0x788[01]`) | 90.0 °F | **panel + 0** — no offset |
-| Thermostat **heat** setpoint | 88.0 °F | **panel − 2** |
-| Thermostat **cool** setpoint | 70.0 °F | **panel 68 + 2** |
+Ten sub-commands share this ID, selected by byte 0, payload from byte 1.
 
-The head unit is not applying a fixed correction — it builds a **±2 °F deadband**
-around the requested temperature, and **only in the RV‑C thermostat frame**. The
-Rixen receives the number unmodified.
-
-This also explains the 88 °F seen during the previous session's Rixen test,
-which had been logged as unexplained: the target then was also 90.
-
-> **App rule (revised):** cool setpoint = displayed + 2; heat setpoint =
-> displayed − 2; Rixen target = displayed. Do **not** apply one blanket offset.
-
-### CONFIRMED by observed transition (2026-08-12)
-
-Target moved from 90 to 78 with the overhead unit in heat. Both rules appear in
-the same frames, at two different temperatures 11 degrees apart:
-
-| t | panel | thermostat heat | Rixen target |
+| mux | sub-command | width | notes |
 |---|---|---|---|
-| 2.21 | 89 *(passing through)* | **87.0 °F** = −2 | **89.1 °F** = +0 |
-| 5.55 | **78** | **76.0 °F** = −2 | **78.1 °F** = +0 |
+| `01` | **Set TempTarget** | 16-bit, 0.1 °C | echoed in `0x724` bytes 2–3 |
+| `02` | **Set FanSpeed** | 8-bit | `0` → `15` with the furnace |
+| `03` | **Set Furnace** | 8-bit | `0` → `1` on fuel heat |
+| `06` | Set Hot Water | 1-bit | present in the stream, never seen changing |
+| `0C` | **Send Amb Temp** | 16-bit, × 0.03125 offset −273 | see below |
 
-Predicted 76.0, observed 76.0. The cool setpoint held at 70.0 throughout,
-untouched — consistent with it being an independent field.
+`0C` is unambiguous: no other sub-command uses the `0.03125 / −273` scaling, and
+it tracks `0x724` bytes 0–1 exactly. **The head unit reads ambient temperature
+from the A/C (`0x19FF9C58`) and relays it to the heater.**
 
-The Rixen's trailing `.1 °F` is quantisation, not error: it carries 0.1 °C
-units, so 78 °F → 25.6 °C → 78.08 °F.
+The remaining sub-commands in the database — Set Electric, Set Engine, Set
+Preheat, Send Eng Run, Send Prime Fuel Time — have not been seen changing, so
+their mux values are unassigned.
 
-**The deadband is now observed, not inferred.** Nothing further outstanding on
-the setpoint encoding.
+## Heat source selection
 
-## Rixen writes are accepted — the obstacle is persistence
-
-The heater acts on our `0x788[01]` target immediately; what defeats a write is
-the head unit re-asserting its own value a few seconds later.
-
-Measured with a single frame (`cansend can0 788#010B010000000000`, target
-80.1 °F) against a `candump` of `0x724` + `0x788`:
+The panel's heat page engages the Rixen immediately, and a separate control
+switches the source between **fuel**, **elec** and **dual**. On the wire that
+hands the job between two entirely separate subsystems:
 
 ```
-t=2.70s   we send target 80.1 F
-t=3.00s   heater ACCEPTS -> 0x724 target reads 80.1 F   (~300 ms)
+switch to HEAT (fuel)            switch fuel -> elec
+  RIXEN[03] 0 -> 1  furnace on     RIXEN[03] 1 -> 0  furnace off
+  RIXEN[01] -> 322  target 90F     RIXEN[02] -> 0    fan off
+  RIXEN[02] -> 15   fan speed      RIXEN[01] -> 1
+  THERMOSTAT mode -> 0 (off)       THERMOSTAT mode -> 2 (heat), fan 0x1E
+```
+
+Fuel and elec are mutually exclusive — only one is commanded at a time. `dual`
+presumably commands both; not captured.
+
+## Writes are accepted; holding them is the problem
+
+**The Rixen does not filter by sender.** Unlike the PDMs, which obey only
+SA `0x11`, it acts on any correctly framed command. What defeats a write is the
+head unit re-asserting its own value:
+
+```
+t=2.70s   send target 80.1 F
+t=3.00s   heater accepts   -> 0x724 target reads 80.1 F   (~300 ms)
 t=5.63s   head unit re-asserts 78.1 F
-t=6.00s   heater reverts  -> 0x724 target reads 78.1 F
+t=6.00s   heater reverts   -> 0x724 target reads 78.1 F
 ```
 
-Conclusions:
+**The head unit continuously re-asserts the heater's whole state.** Each `0x788`
+sub-command repeats roughly every 5–6 seconds, staggered rather than in one burst
+— over 24 seconds, 12 bursts with a mean 2.18 s gap, each carrying one or two
+sub-commands. Unlike the roof vent's fire-once command, this frame is repeated.
 
-- **The Rixen does not filter by sender.** Unlike the PDM (which obeys only
-  SA 0x11), it acted on our frame immediately. Our decode and framing are
-  correct as documented.
-- **The head unit continuously re-asserts the heater's whole state.** Each
-  `0x788` sub-command repeats roughly every **5-6 s**, staggered rather than in
-  one burst (measured over 24 s: 12 bursts, mean 2.18 s between bursts, each
-  carrying one or two sub-commands). The command frame is NOT fire-once, unlike
-  the roof vent's `0x19FEA603`.
-- A one-shot write therefore holds for ~3 s. Holding a value means contending
-  with the head unit indefinitely.
+A one-shot write therefore holds for about three seconds.
 
-### Why the app stays read-only
+> **Why a companion app should read this and not write it.**
+>
+> Injecting at 1–2 Hz would be cheap on bus load, unlike PDM dimming. The problem
+> is that the steady state is **contention, not takeover**: your value and the
+> head unit's alternate every few seconds.
+>
+> On a lighting channel that is flicker. On a **diesel burner** it is a setpoint
+> oscillating several times a minute, and the Rixen's internal hysteresis and
+> minimum-run behaviour are not characterised here at all. Short-cycling a
+> combustion heater is a wear and safety question that cannot be bounded from the
+> bus.
+>
+> Real control needs an inline controller presenting one coherent setpoint, never
+> parallel injection.
 
-Injection at ~1-2 Hz would be cheap on bus load (unlike PDM dimming's ~250 Hz)
-— but the steady state is **contention, not takeover**: our value and the head
-unit's alternate every few seconds. On a lighting channel that is flicker; on a
-**diesel burner** it is a setpoint oscillating several times a minute, and the
-Rixen's internal hysteresis and minimum-run behaviour are **not characterised**
-by us at all. Short-cycling a combustion heater is a wear and safety question
-we cannot bound from the bus.
-
-**Decision (owner, 2026-08-26): Rixen is read-only in the companion app.**
-Real control would need **cut-and-stand-in** (box inline, presenting one
-coherent setpoint), never parallel injection.
-
-### What the app reads
+## What is worth reading
 
 | Source | Field |
 |---|---|
-| `0x724` b0-1 | current cabin temp (x0.01 °C) |
-| `0x724` b2-3 | target (x0.1 °C) — no deadband; the Rixen gets the panel's number unmodified |
+| `0x724` b0–1 | current cabin temperature (× 0.01 °C) |
+| `0x724` b2–3 | target (× 0.1 °C) — no deadband; the Rixen gets the panel's number |
 | `0x724` b6 bit 3 | calling for heat |
 | `0x788[02]` | heater fan |
 | `0x788[03]` | furnace |
 | `0x788[06]` | hot water |
 
-Live sample decoded 2026-08-26: current 83.0 °F, target 78.1 °F, all outputs
-off; `0x788[0C]` ambient relay matched `0x724` current to the hundredth,
-independently confirming both decodes.
+A cross-check worth knowing: `0x788[0C]` ambient matches `0x724` current
+temperature to the hundredth, which exercises both decodes at once.
+
+---
+
+# Not established
+
+- **`0x19FDE203`** (Vent Control 2) — never observed, across a session covering
+  fan on/off, two speed changes, air direction and open/close. Everything went
+  out on `1FEA6`. It may address a second vent this van does not have, or a
+  feature the UI does not expose.
+- **`0x789`** HC_SetIO (bitfield plus a 32-bit field) — never observed.
+- **`0x788` mux `06`** (hot water) — present but never seen changing.
+- **Whether A/C heat and Rixen heat share a limit.** The thermostat heat setpoint
+  reached 88 °F while the Rixen target reached 90 °F. Consistent with the −2 °F
+  deadband, but not tested at the top of the range.
+- **`dual` heat mode** — not captured.

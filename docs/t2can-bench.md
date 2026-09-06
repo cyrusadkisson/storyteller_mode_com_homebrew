@@ -88,7 +88,7 @@ and both of these tests pass:
   CANLA→CAN_L, SGNDA→GND, R120 switch ON) and bringing `can0` up at 250 000 kbit/s
   classic, `candump` decodes `0AA [8] 41 41 41 41 41 41 41 41` cleanly.
 
-## Van datagrams at the van's speed (2026-08-24)
+## Emitting the van's own frames at 250 kbit/s
 
 The milestone: **prove channel A can emit the van's real frames — the same
 datagrams we reverse-engineered off CAN1 — at 250 kbit/s classic, and that the
