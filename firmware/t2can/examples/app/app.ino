@@ -455,11 +455,18 @@ static void lbRestore() {
   // them. The old position-based placement needed the one-shot consume; the
   // absolute-time placement does not.
   if (!h.savedEpoch) {
-    // No clock at save means the age can never be established. Refusing is the
-    // safe half of that trade: unknowably old history shown as current is
-    // worse than no history. In practice this cannot happen -- saving is done
-    // from the app, and the app sets the clock on every poll.
-    Serial.println("charts: file has no saved clock, discarded");
+    // No clock at save: the age is unknowable, but the data is still real.
+    // Place it by position (newest in the newest slot) rather than throwing
+    // it away -- a board that rebooted before the phone ever connected would
+    // otherwise lose everything it recorded. The age stays unknown, which is
+    // honest: it is shown as recent because that is the only place it can go.
+    for (int j = 0; j < TEMP_BUCKETS; j++)
+      for (int k = 0; k < 4; k++)
+        if (lbRing(k)[j] == INT16_MIN) lbRing(k)[j] = lbHeld[k][j];
+    if (tempFilled < TEMP_BUCKETS) {
+      uint32_t f = tempFilled + h.filled;
+      tempFilled = (f > TEMP_BUCKETS) ? TEMP_BUCKETS : (uint16_t)f;
+    }
     return;
   }
   lbHeldFilled = h.filled;
