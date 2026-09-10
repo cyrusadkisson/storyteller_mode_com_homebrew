@@ -472,8 +472,8 @@ static void lbRestore() {
 // Reached from learnEpoch(), which is defined above this point.
 void lbApplyGapIfPending();
 
-// Called once the clock is known. Pushes in one empty bucket per 15 minutes of
-// outage so the chart shows the hole instead of implying continuity.
+// Called once the clock is known. Places the held buckets by their absolute
+// time; a gap is whatever never gets written, so the hole shows itself.
 // Runs once, the first time the clock is known.
 //
 // Each bucket is placed by its OWN ABSOLUTE TIME, which is what makes this
