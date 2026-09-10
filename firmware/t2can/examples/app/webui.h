@@ -71,6 +71,7 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div id="packchart" style="overflow-x:auto"></div>
 <div class="row"><span class="name">Inverter <span class="sub" id="invline"></span></span>
 <span><button id="invtog">off</button></span></div>
+<div class="row"><span class="name">Shore power limit <span class="sub">(set on panel)</span></span><b id="branch">--</b></div>
 <div class="sub" id="batt"></div></div>
 
 <h2>Lights &amp; switches <span class="sub" style="text-transform:none;letter-spacing:0">(use panel for dimming)</span></h2><div class="card">
@@ -139,11 +140,12 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div id="foot"></div>
 <script>
 // --- switch rows ---------------------------------------------------------------
-// Rows 0-3 are the dimmable lights (shadow injection holds a level; the panel
-// always wins if someone touches a switch). Row 4 is master. Rows 5-7 are
-// plain wall-switch spoofs with no dimming.
-// dimIdx maps a light row to the firmware's LIGHT_DO order; swIdx maps a
-// plain row to the SW[] spoof table.
+// Rows 0-3 are the lights, controlled by wall-switch spoof (dimming was
+// removed 2026-08-25 -- it cannot be held from a parallel tap). Reading lights
+// have no wall switch, so that row is status-only. Rows 4-6 are the plain
+// wall-switch spoofs (aux, water pump, hot water circ).
+// LIGHT_SW maps a light row to the firmware's SW[] spoof table; PLAIN[].sw
+// does the same for the plain rows.
 const LIGHTS=["Cabin lights","Cargo lights","Reading lights","Awning lights"];
 const LIGHT_CTL=[1,1,0,1];   // reading has no wall switch -> status only
 const LIGHT_SW=[0,1,-1,5];   // index into the firmware's SW[] spoof table
@@ -250,11 +252,9 @@ document.getElementById("comp").onclick=()=>{
   compOn=!compOn; paintComp(); acHold=Date.now()+1600;
   cmd(compOn?"ac&mode=on":"ac&mode=comp");
 };
-// A/C fan mode = byte1 bits 4-5. Only 0 (auto) is wire-verified; low/high stay
-// disabled until a panel capture pins their bit values, and the row reports
-// whatever the bus echo currently shows so an unknown value is visible.
-// 0 = auto, 1 = low, 2 = high. Auto is byte1 high nibble 0; low/high are
-// manual (nibble 1) with byte2 speed 0x64 / 0xC8.
+// A/C fan mode = byte1 bits 4-5. Wire-verified 2026-08-25: 0 = auto (nibble 0),
+// 1 = low / 2 = high (manual nibble 1, byte2 speed 0x64 / 0xC8). The row
+// reports whatever the bus echo currently shows so an unknown value is visible.
 const FAN_CMD=["acfan&m=auto","acfan&m=low","acfan&m=high"];
 let acFan=0;
 function paintAcFan(){
@@ -458,7 +458,7 @@ async function poll(){
     document.getElementById("drawline").textContent=j.drawline||"--";
     document.getElementById("socpct").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
     // Two extrapolations: the instantaneous one, which swings as the
-    // compressor and heater cycle, and a 30-minute mean that rides through it.
+    // compressor and heater cycle, and a windowed mean that rides through it.
     {
       // Plain hours rather than d/h -- shorter, and the qualifiers matter more
       // than the precision. Qualifiers are set smaller and muted so the
@@ -584,6 +584,8 @@ async function poll(){
     acPower=!!j.aclive; paintAcGate();
     document.getElementById("invline").textContent=
       j.shore?"•  shore power  •  "+(j.invtext||"") : (j.invtext?"•  "+j.invtext:"");
+    document.getElementById("branch").textContent=
+      j.branch!=null&&j.branch>=0?j.branch+" A":"--";
     // Rixen: read-only mirror of the heater's own state
     document.getElementById("rixcur").textContent=j.rixcur!=null?j.rixcur.toFixed(1)+"°F":"--";
     document.getElementById("rixtgt").textContent=j.rixtgt!=null?j.rixtgt.toFixed(1)+"°F":"--";
@@ -624,15 +626,13 @@ async function poll(){
         row.style.display="flex";
       } else row.style.display="none";
     }
-    // Cell monitor. The decoded volts use the PROPOSED scaling (2.00 + b/100)
-    // and are shown only as a convenience -- the raw bytes below them are the
-    // evidence, and the spread is the answer. Nothing here is treated as fact.
+    // Cell monitor. The decoded volts use the confirmed scaling (2.00 + b/100,
+    // verified 2026-09-05 against the phone app -- docs/energy-can2.md). The
+    // raw bytes below are kept as the evidence; the spread is the answer.
     {
-      // Confirmed per-cell on 2026-09-05: one byte read 0x7B against fifteen
-      // 0x7D, matching the phone app exactly (docs/energy-can2.md). So this
-      // section reports the WEAKEST CELL rather than debating what the bytes
-      // are -- the BMS opens the contactor on the weakest cell, never on the
-      // pack average, which is the whole reason this van dies at 80 % showing.
+      // This section reports the WEAKEST CELL -- the BMS opens the contactor on
+      // the weakest cell, never on the pack average, which is the whole reason
+      // this van dies at 80 % showing.
       // Take the minimum FROM THE BOARD. It is the same number the weak-cell
       // warning is raised from, so recomputing it here could name a different
       // cell in the grid than the banner names in its text.
@@ -775,10 +775,10 @@ function drawPower(hist, fill, days){
 }
 
 // --- board temperature chart ------------------------------------------------------
-// One bucket per hour: DAYS*24 whole hours plus the one in progress. The board
-// has no calendar -- millis() resets on boot -- so the axis is relative,
-// "-Nd" through to "now". Hours with too little data arrive as null and are drawn as gaps, not
-// interpolated across.
+// 15-minute buckets: DAYS*24*4 whole buckets plus the one in progress. The
+// board has no calendar -- millis() resets on boot -- so the axis is relative,
+// "-Nd" through to "now". Buckets with too little data arrive as null and are
+// drawn as gaps, not interpolated across.
 function drawTemp(hist, fill, days, elId, tmax){
   if(!hist||!hist.length)return;
   const DAYS=days||Math.round((hist.length-1)/24);   // derived, never hardcoded

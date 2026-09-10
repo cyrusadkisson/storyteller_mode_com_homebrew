@@ -54,8 +54,8 @@ A/C (off / cool / heat, compressor, fan speed, temperature setpoint), roof vent
 
 **Shows:** state of charge, power flow, time to full or empty, pack voltage /
 current / temperature, per-cell voltages, tank levels, cabin temperature, AC line
-voltage and frequency, Rixen heater state, per-channel power draw, board
-temperature — most with 48-hour charts.
+voltage and frequency, shore power limit, Rixen heater state, per-channel power
+draw, board temperature — most with 48-hour charts.
 
 **Won't do**, and these are limitations of tapping the bus in parallel rather
 than oversights — reasons in [`docs/design-notes.md`](docs/design-notes.md):
@@ -191,7 +191,7 @@ internet, since the board isn't a gateway. That's normal.
 > checklist are in [`docs/img/README.md`](docs/img/README.md).
 
 **Battery & Power** — charge, live power flow with a 48-hour chart, time to full
-or empty, pack temperature and its own chart, inverter on/off.
+or empty, pack temperature and its own chart, inverter on/off, shore power limit.
 📷 `docs/img/app-battery.png`
 
 One place the app is simply more correct than the panel: when the BMS declines

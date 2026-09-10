@@ -22,8 +22,8 @@
  *     - inverter on/off on CAN2 (0x19FFD3F2, single-shot latch). No status
  *       echo exists, so the AC line voltage is the truth check.
  *   READ-ONLY: per-channel power (feedback amps x the 12 V load bus),
- *   tanks, battery DC status, inverter
- *   AC stats, interior temperature, PDM fault frames, Rixen heater state.
+ *   tanks, battery DC status, inverter AC stats, shore power limit,
+ *   interior temperature, PDM fault frames, Rixen heater state, cell monitor.
  *
  *   NOT included, each for a measured reason (see the docs): dimming and
  *   reading lights (cannot hold a PDM output from a parallel tap), Rixen
@@ -64,7 +64,7 @@ static const char *MDNS_NAME = "van";         // http://van.local
 // bucket in progress = TEMP_HOURS*4+1 bars. A 15-min bucket needs >=15 of its
 // 30 possible samples to count.
 // Live in RAM, but PERSISTED to SPIFFS on every bucket rotation (see the
-// history lifeboat below). This comment used to justify RAM-only storage by
+// chart persistence below). This comment used to justify RAM-only storage by
 // "thousands of flash write cycles"; that does not survive arithmetic at this
 // write rate. ~1.6 KB every 15 minutes is ~154 KB/day into a 3.4 MB partition
 // -- roughly 16 erase cycles a year against an endurance near 100,000. The
@@ -156,6 +156,14 @@ static const uint32_t ID_DC2        = 0x19FFFC46UL;  // battery temp / SoC / tim
 static const uint32_t ID_DC3        = 0x19FFFB46UL;  // battery SoH / Ah remaining
 static const uint32_t ID_INV_CMD    = 0x19FFD3F2UL;  // inverter on/off (we TX, CAN2)
 static const uint32_t ID_INV_AC     = 0x19FFD7E1UL;  // inverter/shore AC line status
+// Shore-power limit ("branch amps"): the panel setting that caps draw from a
+// pedestal. Three frames carry the same plain-integer amps value -- two from
+// the inverter/charger node (0xE1), one from the circuit-capacity node (0xF2) --
+// so any of them is the setting. READ-ONLY: the frame the panel transmits to
+// CHANGE it has never been captured (docs/energy-can2.md).
+static const uint32_t ID_BRANCH_1  = 0x19FF95F2UL;  // circuit capacity, byte 3
+static const uint32_t ID_BRANCH_2  = 0x19FF96E1UL;  // inverter/charger, byte 3
+static const uint32_t ID_BRANCH_3  = 0x19FFC9E1UL;  // inverter/charger, byte 7
 // Cell monitor (SA 0x8E), six consecutive PGNs 0x18FF918E..0x18FF968E, each a
 // further 0x100 apart. The last four carry four bytes each = sixteen values,
 // which is the pack's cell count -- but those sixteen bytes have NEVER been
@@ -319,8 +327,8 @@ static void learnEpoch(uint32_t nowSec) {
   // Recomputed on every poll rather than latched: it costs nothing and it
   // absorbs the ~2 s/day the crystal drifts.
   bootEpoch = nowSec - (millis() / 1000);
-  // A restore left the saved moment pending; now that the time is known, the
-  // outage length is computable. Declared below, so forward-declare it here.
+  // A restore left the saved buckets pending; now that the time is known they
+  // can be placed by their absolute time. Declared below, so forward-declare.
   extern void lbApplyGapIfPending();
   lbApplyGapIfPending();
 }
@@ -330,7 +338,7 @@ static uint32_t nowEpoch() {
 }
 
 
-// ----- history lifeboat ------------------------------------------------------
+// ----- chart persistence -----------------------------------------------------
 // The four chart histories live in RAM and die with any power cycle -- which
 // includes every deliberate swap between laptop USB, a power brick and van
 // power. This saves them to SPIFFS on demand, and restores them at boot.
@@ -348,11 +356,11 @@ static uint32_t nowEpoch() {
 //   * The bucket in progress is NOT saved: at most 15 minutes.
 //
 // THE GAP. The board has no clock at boot, so it cannot know how long it was
-// dark until a phone connects. The save file records the wall-clock moment it
-// was written; the first poll that supplies the time triggers the shift, which
-// pushes in one empty bucket per 15 minutes of outage. Until that poll the
-// restored chart is un-shifted -- honest enough, since it is un-shifted by
-// exactly the amount nobody yet knows.
+// dark until a phone connects. The save file records the wall-clock moment its
+// newest bucket closed; the first poll that supplies the time places every
+// bucket by its own absolute time, and anything older than the window is
+// dropped. Until that poll the restored chart is held back rather than shown
+// with a wrong age.
 // THERE IS DELIBERATELY NO MANUAL SAVE BUTTON. It looks helpful and is not:
 // the saved arrays are only complete up to the last bucket rotation, since the
 // bucket in progress is never written. So the true no-data period runs from
@@ -372,7 +380,7 @@ struct __attribute__((packed)) LbHdr {
   uint32_t sum;                            // over the payload only
 };
 
-static uint32_t lbPendingEpoch = 0;        // set by a restore, cleared by the shift
+static uint32_t lbPendingEpoch = 0;        // set by a restore, cleared by the apply
 // The file is read at boot but NOT committed to the live rings until the clock
 // arrives. Without a clock the board cannot tell a 30-second swap from a
 // week-old file, and committing early would display stale history as current
@@ -438,26 +446,26 @@ static void lbRestore() {
   if (!good) return;
   uint32_t sum = 0;
   for (int k = 0; k < 4; k++) sum ^= lbSum(lbHeld[k], TEMP_BUCKETS);
-  if (sum != h.sum) { Serial.println("lifeboat: checksum mismatch, ignored"); return; }
+  if (sum != h.sum) { Serial.println("charts: checksum mismatch, ignored"); return; }
 
-  // A lifeboat is one-shot. Leaving the file in place meant every later boot
-  // restored the same stale history and re-armed a gap from a timestamp that
-  // had already been consumed -- which is how a save from an hour earlier kept
-  // blanking freshly collected buckets.
-  SPIFFS.remove(LB_PATH);
-
+  // The file is KEPT, not consumed. Re-applying it on a later boot is harmless:
+  // buckets are placed by absolute time and only fill empty slots, so a stale
+  // file can never blank freshly collected data. Keeping it is what makes a
+  // reflash -- or any second reboot -- restore the charts instead of losing
+  // them. The old position-based placement needed the one-shot consume; the
+  // absolute-time placement does not.
   if (!h.savedEpoch) {
     // No clock at save means the age can never be established. Refusing is the
     // safe half of that trade: unknowably old history shown as current is
     // worse than no history. In practice this cannot happen -- saving is done
     // from the app, and the app sets the clock on every poll.
-    Serial.println("lifeboat: file has no saved clock, discarded");
+    Serial.println("charts: file has no saved clock, discarded");
     return;
   }
   lbHeldFilled = h.filled;
   lbPendingEpoch = h.savedEpoch;
   lbHave = true;
-  Serial.printf("lifeboat: %u buckets held, waiting for the clock\n",
+  Serial.printf("charts: %u buckets held, waiting for the clock\n",
                 (unsigned)h.filled);
 }
 
@@ -492,7 +500,7 @@ static void lbApplyGap() {
 
   const uint32_t bSaved = saved / 900;      // bucket number of the file's newest
   const uint32_t bNow   = now / 900;        // bucket number of the ring's newest
-  if (bNow < bSaved) { Serial.println("lifeboat: file is from the future, discarded"); return; }
+  if (bNow < bSaved) { Serial.println("charts: file is from the future, discarded"); return; }
 
   int placed = 0;
   for (int j = 0; j < TEMP_BUCKETS; j++) {
@@ -509,7 +517,7 @@ static void lbApplyGap() {
     uint32_t f = tempFilled + placed;
     tempFilled = (f > TEMP_BUCKETS) ? TEMP_BUCKETS : (uint16_t)f;
   }
-  Serial.printf("lifeboat: %d buckets placed, %lu min since the file was written\n",
+  Serial.printf("charts: %d buckets placed, %lu min since the file was written\n",
                 placed, (unsigned long)((now - saved) / 60));
 }
 
@@ -616,6 +624,10 @@ static float    invAcV = 0, invHz = 0;
 static uint32_t invAcAt = 0;
 #define AC_STALE_MS 3000
 static bool     seenInv = false;
+static int8_t   branchAmp = -1;      // shore-power limit, amps (-1 = never seen)
+static uint32_t branchAt = 0;
+static bool     seenBranch = false;
+#define BRANCH_STALE_MS 10000
 static int8_t   invCmd = -1;         // last commanded inverter state (-1 = never commanded)
 static float    ambC = 0;
 static bool     seenAmb = false;
@@ -851,6 +863,12 @@ void onCanBFrame(const twai_message_t &m) {
     invAcV = (d[1] | (d[2] << 8)) * 0.05f;
     invHz = (d[5] | (d[6] << 8)) / 128.0f;
     seenInv = true;
+  } else if (m.identifier == ID_BRANCH_1 || m.identifier == ID_BRANCH_2) {
+    branchAmp = d[3];
+    seenBranch = true; branchAt = millis();
+  } else if (m.identifier == ID_BRANCH_3) {
+    branchAmp = d[7];
+    seenBranch = true; branchAt = millis();
   } else if (m.identifier >= ID_CELL_BASE &&
              m.identifier <= ID_CELL_BASE + (ID_CELL_N - 1) * ID_CELL_STEP &&
              ((m.identifier - ID_CELL_BASE) % ID_CELL_STEP) == 0) {
@@ -963,6 +981,8 @@ void sendState() {
     int invShown = acFresh ? (acLive ? 1 : 0) : -1;
     J("\"invon\":%d,\"aclive\":%d,\"shore\":%d,",
       invShown, acLive ? 1 : 0, (acLive && battA > 0.5f) ? 1 : 0);
+    // Shore-power limit: -1 = no fresh reading (never seen, or gone quiet).
+    J("\"branch\":%d,", (seenBranch && (millis() - branchAt < BRANCH_STALE_MS)) ? branchAmp : -1);
   }
 
   J("\"lights\":[");
@@ -1278,7 +1298,7 @@ void setup() {
   }
   bootId = (uint16_t)(esp_random() & 0xFFFF);   // labels this run in the log
   lbMounted = SPIFFS.begin(true);            // true = format if unformatted
-  if (!lbMounted) Serial.println("SPIFFS mount failed; lifeboat disabled");
+  if (!lbMounted) Serial.println("SPIFFS mount failed; chart persistence disabled");
   else lbRestore();
   Serial.printf("temp sensor: %.1f C\n", temperatureRead());
   tempHourStart = millis();

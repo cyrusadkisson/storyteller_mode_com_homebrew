@@ -270,7 +270,8 @@ moves the same value in three frames:
 
 Plain integer amps. **Reading it is solved; setting it is not** — all three are
 reports from the circuit-capacity and inverter nodes. Whatever the panel sends
-to change the setting has not been captured.
+to change the setting has not been captured. The companion app displays the
+limit (Battery & Power → Shore power limit); it cannot change it.
 
 ### Stub frames
 
