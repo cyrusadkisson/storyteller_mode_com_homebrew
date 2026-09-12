@@ -121,12 +121,14 @@ button:active{opacity:.8}button:disabled{opacity:.45}
 <div class="row sub2"><span class="name">Heater fan</span><b id="rixfan">--</b></div>
 </div>
 
-<h2>Cell monitor</h2><div class="card">
+<h2 style="display:flex;justify-content:space-between;align-items:baseline"><span>Cell monitor</span><span id="cellsoc" style="text-transform:none;letter-spacing:0"></span></h2><div class="card">
 <div class="row"><span class="name">Lowest cell</span><b id="celllow">--</b></div>
 <div class="row"><span class="name">Spread across the pack</span><b id="cellspread">--</b></div>
+<div class="row"><span class="name">Balance map <span class="sub">(BMS balancing)</span></span><b id="cellbal">--</b></div>
 <div id="cellgrid" class="sub" style="font-family:monospace;white-space:pre;overflow-x:auto"></div>
 <div class="sub" id="cellnote" style="margin-top:8px"></div>
-<div class="sub" id="cellraw" style="font-family:monospace;white-space:pre;overflow-x:auto;font-size:11px;margin-top:8px;opacity:.6"></div>
+<div class="sub" style="margin-top:8px">Raw CAN2 frames (hex), one line per frame</div>
+<div class="sub" id="cellraw" style="font-family:monospace;white-space:pre;overflow-x:auto;font-size:11px;margin-top:2px;opacity:.6"></div>
 </div>
 
 <h2>Phone app board temp (ok up to 185&deg;F)</h2><div class="card">
@@ -150,7 +152,7 @@ const LIGHTS=["Cabin lights","Cargo lights","Reading lights","Awning lights"];
 const LIGHT_CTL=[1,1,0,1];   // reading has no wall switch -> status only
 const LIGHT_SW=[0,1,-1,5];   // index into the firmware's SW[] spoof table
 const PLAIN=[{n:"Aux",sw:3},{n:"Water pump",sw:2},{n:"Hot water circ.",sw:4}];
-const lHold=[0,0,0,0], lOn=[0,0,0,0], lPct=[0,0,0,0];
+const lHold=[0,0,0,0], lOn=[0,0,0,0];
 
 const holdUntil=[0,0,0], curP=[0,0,0];
 
@@ -457,6 +459,11 @@ async function poll(){
     document.getElementById("batt").textContent=j.batt||"";
     document.getElementById("drawline").textContent=j.drawline||"--";
     document.getElementById("socpct").textContent=j.soc!=null?j.soc.toFixed(0)+"%":"--";
+    // State of charge repeated on the Cell monitor heading: the weak cell only
+    // means something next to what the gauge claims, and this is the section
+    // where that comparison gets made.
+    document.getElementById("cellsoc").textContent=
+      j.soc!=null?"SoC "+j.soc.toFixed(0)+"%":"";
     // Two extrapolations: the instantaneous one, which swings as the
     // compressor and heater cycle, and a windowed mean that rides through it.
     {
@@ -655,29 +662,48 @@ async function poll(){
           cw.style.display="block";
         } else cw.style.display="none";
       }
+      // Naming a cell is only meaningful when exactly one sits lowest. Several
+      // tied at the bottom, or all sixteen alike, are different readings and
+      // say so rather than picking one of them arbitrarily.
+      const nLo=cs.filter(v=>v===lo).length;
       document.getElementById("celllow").textContent=
-        have?("c"+(loI+1)+"  "+(2+lo/100).toFixed(2)+"V"):"--";
+        !have?"--"
+          :(nLo===cs.length?"all equal"
+            :(nLo===1?("c"+(loI+1)+"  "+(2+lo/100).toFixed(2)+"V")
+              :("multiple at "+(2+lo/100).toFixed(2)+"V")));
       document.getElementById("cellspread").textContent=
         have?((j.cellspread/100).toFixed(2)+"V  ("+j.cellspread+" counts)"):"--";
+      // Balance map: bytes 4-5 of 0x18FF928E, one bit per cell. Only ever
+      // seen at 0000 (nothing balancing), so the bit-to-cell mapping is
+      // unproven and the raw value is shown rather than a cell name.
+      document.getElementById("cellbal").textContent=
+        (have&&j.balance!=null&&j.balance>=0)
+          ?(j.balance?("0x"+j.balance.toString(16).toUpperCase().padStart(4,"0")):"none")
+          :"--";
       let g="";
       cs.forEach((v,i)=>{
-        // Mark the low cell. With a failing cell in this pack, WHICH one is
-        // lowest matters more than any of the sixteen values.
-        const mark=(have&&i===loI&&j.cellspread>0)?"*":" ";
+        // Mark EVERY cell at the minimum, not just the one the board's scan
+        // landed on. A tie means all of them are the low cells, and starring
+        // one would name an arbitrary winner -- the same fault the row above
+        // avoids by saying "multiple". No marks when the pack is uniform.
+        const mark=(have&&j.cellspread>0&&v===lo)?"*":" ";
         g+=(i%4===0?(i?"\n":""):"  ")+
            mark+("c"+(i+1)).padStart(3," ")+" "+(2+v/100).toFixed(2);
       });
       document.getElementById("cellgrid").textContent=have?g:"";
+      // The interpretation line is gone: the rows above carry the reading, and
+      // energy-can2.md carries the explanation. Only the no-data case still
+      // needs saying, or a dead CAN2 tap reads as an empty section.
       document.getElementById("cellnote").textContent=
-        !have?"No cell monitor frames on CAN2.":
-        (j.cellspread>0
-          ?("c"+(loI+1)+" is "+(j.cellspread/100).toFixed(2)+
-            "V below the highest cell. A gap that grows as the pack drains is the "+
-            "shutdown signature: the BMS trips on this cell while the gauge still "+
-            "reports what the other fifteen hold.")
-          :"All sixteen equal. Cells diverge as the pack drains — near a full charge they genuinely are alike, so no spread here means little.");
+        have?"":"No cell monitor frames on CAN2.";
+      // Label each raw line so the hex says what it is without decoding it.
+      // The four digits are the low half of the CAN id, for matching a capture.
+      const RL=["918E  summary","928E  balance map","938E  cells 1-4",
+                "948E  cells 5-8","958E  cells 9-12","968E  cells 13-16"];
       document.getElementById("cellraw").textContent=
-        have&&j.cellraw?j.cellraw.join("\n"):"";
+        have&&j.cellraw
+          ?j.cellraw.map((h,i)=>(RL[i]||"").padEnd(20," ")+h).join("\n")
+          :"";
     }
     if(j.temphist) drawTemp(j.temphist, j.tempfill||0, j.temphours);
     if(j.ambhist) drawTemp(j.ambhist, j.tempfill||0, j.temphours, "ambchart");

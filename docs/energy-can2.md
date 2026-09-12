@@ -208,14 +208,28 @@ unproven.
 
 ```
 01 02 10 40 00 00 4A 84
-         ^^        ^^
-         |         +-- 0x4A = 74 → 34 °C, plausibly BMS temperature
-         +------------ 0x40 matched the phone app's "Last Code 40"
+         ^^ ^^ ^^
+         |  |  +------ byte 6: BMS temperature
+         |  +--------- bytes 4–5: the balance map
+         +------------ byte 3: 0x40 matched the phone app's "Last Code 40"
 ```
 
+**Bytes 4–5 are the balance map** — a 16-bit field, one bit per cell, naming
+which cells the BMS is bleeding to pull the pack back into line. It has only
+ever been seen as **`0000`**: nothing being balanced.
+
+That zero is the reading that matters when a cell is out of line. With cell 9
+30+ counts below the rest and the map at zero, the BMS is not attempting a
+correction at all — which points at the **balancing circuit**, not only the
+cell. The service response on this pack covers both.
+
+**The bit mapping is unproven.** Nothing here has been caught balancing, so
+which bit belongs to which cell is unknown. Only "nothing" can be read from it
+today.
+
 The phone app reports BMS temperature several degrees above cell temperature,
-which fits byte 6 being the BMS's own sensor. Both are single observations. The
-rest of this frame is undecoded.
+which fits byte 6 being the BMS's own sensor. Byte 3's `0x40` matched the phone
+app's "Last Code 40". The remainder is undecoded.
 
 ---
 
@@ -401,9 +415,9 @@ near empty. One example pack, tracked over four days:
 At 95 % it is a single count — indistinguishable from rounding. **Check when the
 pack is worked, not when it is full.**
 
-Other signs in the same pack: the **balance map read `0000`**, meaning the BMS
-was not even attempting to correct the imbalance, and highest recorded
-temperature was 206 °F.
+Other signs in the same pack: the balance map read `0000` (bytes 4–5 of
+`0x18FF928E`), meaning the BMS was not attempting a correction at all, and
+highest recorded temperature was 206 °F.
 
 ## A shutdown, start to finish
 
@@ -493,6 +507,6 @@ reports the cell directly — but it costs nothing and covers a different failur
 | **Setting branch amps** | Reading it is solved. The frame the panel sends to change it has not been captured. |
 | `0x18FF918E` byte 5 | Tracks the median in one observation. Needs a pack that is not uniform. |
 | `0x18FF918E` byte 4 | Temperature on two consistent readings. |
-| `0x18FF928E` | Mostly undecoded. |
+| `0x18FF928E` | Bytes 4–5 are the balance map; the bit-to-cell mapping is unproven (only `0000` seen). The remainder is undecoded. |
 | `0x19FFD7E1` bytes 3–4 | AC current scale factor. |
 | `0x19FEA3E1` byte 5 | Probably AC current × 0.1. |

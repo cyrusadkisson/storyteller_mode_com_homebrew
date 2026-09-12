@@ -79,7 +79,6 @@ static const char *MDNS_NAME = "van";         // http://van.local
 #define TEMP_BUCKETS   (TEMP_HOURS * TEMP_BARS_HOUR + 1)   // + the one in progress
 #define TEMP_SAMPLE_MS 30000        // one reading per 30 s
 #define TEMP_MIN_VALID 15           // >=7.5 min of samples or the bucket is void
-static bool     tempOK = true;   // Arduino's temperatureRead() needs no setup
 static int16_t  tempHist[TEMP_BUCKETS];   // tenths of °C; INT16_MIN = no data
 static float    tempAcc = 0;              // current hour accumulator
 static uint16_t tempCnt = 0;
@@ -124,7 +123,6 @@ static uint32_t tempLastSample = 0;
 // until the user dismisses it (client-side, keyed on hotAt). hotAt is the
 // board-millis moment the hour threshold was crossed; a later excursion that
 // again crosses one hour updates it, un-acking the warning.
-static uint32_t hotStreakStart = 0;
 static uint16_t hotStreakCnt = 0;
 static uint32_t hotAt = 0;                 // 0 = never latched
 static uint32_t tempHourStart = 0;
@@ -231,7 +229,6 @@ static uint8_t  fwL = 0, fwR = 1, grL = 0, grR = 1;
 static float    battV = 0, battA = 0, battT = 0;      // CAN2
 static uint16_t battSoC2 = 0;      // SoC ×2
 static uint16_t battMin = 0xFFFF, battAh = 0;
-static uint8_t  battSoH = 0;
 static bool     seenBatt = false, seenTank = false;
 // Battery data must never be rendered from a frozen reading. The BMS can
 // sleep, the CAN2 tap can fail, and the TWAI controller can go bus-off --
@@ -388,7 +385,6 @@ static uint32_t lbPendingEpoch = 0;        // set by a restore, cleared by the a
 // applied -- or discarded as too old -- the moment the time is known.
 static int16_t  lbHeld[4][TEMP_BUCKETS];
 static bool     lbHave = false;
-static uint16_t lbHeldFilled = 0;
 static bool     lbMounted = false;
 
 static uint32_t lbSum(const int16_t *p, size_t n) {
@@ -469,7 +465,6 @@ static void lbRestore() {
     }
     return;
   }
-  lbHeldFilled = h.filled;
   lbPendingEpoch = h.savedEpoch;
   lbHave = true;
   Serial.printf("charts: %u buckets held, waiting for the clock\n",
@@ -613,7 +608,6 @@ static uint32_t ventCmdAt = 0;
 // proves nothing -- but a NONZERO reading proves the fan IS running. Latch
 // that, and only believe "stopped" after sustained zeros past that period.
 static uint32_t ventLastNonZero = 0;
-static uint8_t  ventObsSpeed = 0;
 static uint8_t  ventRepSpeed = 0;                // speed the fan REPORTS
 static uint8_t  ventRepMode = 0;                 // mode/status the fan reports
 static float    ventT = 0;
@@ -621,7 +615,7 @@ static float    ventT = 0;
 static uint16_t rixCurRaw = 0, rixTgtRaw = 0;
 static uint8_t  rixFlags = 0;
 static uint8_t  rixFan = 0, rixFurnace = 0, rixHotWater = 0;
-static bool     seenRix = false, seenRixCmd = false;
+static bool     seenRix = false;
 static bool     seenVent = false;
 static float    invAcV = 0, invHz = 0;
 // The AC-line frame comes FROM the inverter node, so it stops arriving when
@@ -635,7 +629,6 @@ static int8_t   branchAmp = -1;      // shore-power limit, amps (-1 = never seen
 static uint32_t branchAt = 0;
 static bool     seenBranch = false;
 #define BRANCH_STALE_MS 10000
-static int8_t   invCmd = -1;         // last commanded inverter state (-1 = never commanded)
 static float    ambC = 0;
 static bool     seenAmb = false;
 static uint32_t ambAt = 0;
@@ -715,10 +708,6 @@ void sendInv(bool on) {
 // docs/pdm-control.md. Levels here are STATUS ONLY, read off the HU's own
 // broadcasts.
 static const uint8_t LIGHT_DO[4] = {4, 2, 3, 5};   // cabin, cargo, reading, awning
-// Wall-switch spoof index per light, -1 = no physical switch. Reading lights
-// are screen-only on this van, so with injection gone they are status-only.
-static const int8_t  LIGHT_SW[4] = {0, 1, -1, 5};
-static int lvl2pct(uint8_t l) { return (l * 100 + 63) / 127; }
 
 // ----- web UI ------------------------------------------------------------------
 #include "webui.h"
@@ -812,7 +801,6 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     bool owned = ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS);
     if (ventRepSpeed > 0) {
       ventLastNonZero = millis();
-      ventObsSpeed = ventRepSpeed;
       // A running fan is the ONE time the real speed is on the bus: the
       // command frame is fire-once and never re-broadcast, and the status byte
       // reads 0 whenever the fan is off. Outside our own command window the
@@ -836,7 +824,6 @@ void onCanAFrame(uint32_t id, const uint8_t *b, uint8_t len) {
     return;
   }
   if (id == ID_RIX_CMD) {                       // 0x788, multiplexed on byte 0
-    seenRixCmd = true;
     switch (b[0]) {
       case 0x01: rixTgtRaw = b[1] | (b[2] << 8); break;   // target echo
       case 0x02: rixFan = b[1]; break;
@@ -862,7 +849,6 @@ void onCanBFrame(const twai_message_t &m) {
     battMin = d[5] | (d[6] << 8);
     seenBatt = true; battAt = millis(); battTAt = battAt;
   } else if (m.identifier == ID_DC3) {
-    battSoH = d[2];
     battAh = d[3] | (d[4] << 8);
     seenBatt = true; battAt = millis();
   } else if (m.identifier == ID_INV_AC) {
@@ -908,7 +894,7 @@ static float ahToFull() {
 void sendState() {
   char *w = jbuf;
   int left = sizeof jbuf;
-  int n = snprintf(w, left, "{\"build\":\"%s %s\",", __DATE__, __TIME__);
+  int n = snprintf(w, left, "{");
 
   // helper macro: append formatted
   #define J(...) do { w += n; left -= n; if (left <= 0) goto out; n = snprintf(w, left, __VA_ARGS__); } while (0)
@@ -996,10 +982,9 @@ void sendState() {
   for (int k = 0; k < 4; k++) {
     uint8_t ch = LIGHT_DO[k];
     // Loads only ever consume, so both figures are reported negative.
-    J("%s{\"on\":%d,\"pct\":%d,\"amps\":%.3f,\"watts\":%.1f,\"ctl\":%d}", k ? "," : "",
-      doLevel[0][ch] > 0 ? 1 : 0, lvl2pct(doLevel[0][ch]),
-      -doAmps[0][ch], -doAmps[0][ch] * LOAD_BUS_V,
-      LIGHT_SW[k] >= 0 ? 1 : 0);
+    J("%s{\"on\":%d,\"amps\":%.3f,\"watts\":%.1f}", k ? "," : "",
+      doLevel[0][ch] > 0 ? 1 : 0,
+      -doAmps[0][ch], -doAmps[0][ch] * LOAD_BUS_V);
   }
   J("],");
   J("\"sw\":[");
@@ -1017,31 +1002,23 @@ void sendState() {
     else switch (op) { case 0: mode = "off"; break; case 1: mode = "cool"; break;
                        case 2: mode = "heat"; break; default: mode = "on"; }
     J("\"acmode\":\"%s\",\"coolsp\":%d,", mode, (int)lroundf(raw2fF(acCoolRaw)) - 2);  // panel deadband: wire-2
-    J("\"heatsp\":%d,\"acfan\":%d,\"acfanspd\":%d,",
-      (int)lroundf(raw2fF(acHeatRaw)) + 2, (acB1 >> 4) & 0x0F, acFan);
-  } else J("\"acmode\":\"?\",\"coolsp\":null,\"heatsp\":null,");
+    J("\"acfan\":%d,\"acfanspd\":%d,", (acB1 >> 4) & 0x0F, acFan);
+  } else J("\"acmode\":\"?\",\"coolsp\":null,");
 
   if (seenVent) {
     // If vent status has gone quiet, the lid position is UNKNOWN, not the
     // last value -- stale state presented as fact is the recurring bug class.
     const bool ventFresh = ventAt && (millis() - ventAt < VENT_STALE_MS);
     // vset = the setpoint (survives fan-off); vfan = commanded run state.
-    // vrep is the raw reported speed, kept for diagnostics only -- it
-    // oscillates to 0 while the fan runs and must not drive any UI state.
     // No status STRING is sent: the UI composes its own wording from these
     // fields, and a second, unused rendering here was free to drift from it.
-    J("\"vspeed\":%d,\"vrep\":%d,\"vdir\":%d,"
-      "\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,"
-      "\"vown\":%d,\"vobs\":%d,\"vunsure\":%d,",
-      ventSpeed, ventRepSpeed, airIn ? 1 : 0,
+    J("\"vdir\":%d,\"vopen\":%d,\"vmoving\":%d,\"vset\":%d,\"vfan\":%d,\"vunsure\":%d,",
+      airIn ? 1 : 0,
       (ventFresh && !ventPosUnsure) ? ((lidState == LID_OPEN) ? 1 : 0) : -1,
       ventFresh ? ((lidState == LID_MOVING) ? 1 : 0) : -1,
       ventSetSpeed, ventFanOn ? 1 : 0,
-      (ventCmdAt && (millis() - ventCmdAt < VENT_OWN_MS)) ? 1 : 0, ventObsSpeed,
       ventPosUnsure ? 1 : 0);
-  } else J("\"vspeed\":0,\"vrep\":0,\"vdir\":0,"
-           "\"vopen\":-1,\"vmoving\":0,\"vset\":0,\"vfan\":0,"
-           "\"vown\":0,\"vobs\":0,\"vunsure\":0,");
+  } else J("\"vdir\":0,\"vopen\":-1,\"vmoving\":0,\"vset\":0,\"vfan\":0,\"vunsure\":0,");
 
   if (seenRix) {
     // 0x724: current x0.01 C, target x0.1 C. Rixen takes the target with NO
@@ -1074,11 +1051,15 @@ void sendState() {
     // cellmin/cellminc are the SAME numbers the weak-cell warning is raised
     // from, so the UI must display these rather than recompute its own -- a
     // second minimum could name a different cell than the banner does.
-    // cellrep is the BMS's own lowest-cell field (0x18FF918E byte 7), carried
-    // beside ours as a cross-check; if the two ever disagree, one of the two
-    // decodes is wrong and that should be visible rather than averaged away.
-    J("\"cellbad\":%d,\"cellmin\":%d,\"cellminc\":%d,\"cellrep\":%d,",
-      cellBad ? 1 : 0, cellMinV, cellMinIdx + 1, cellFrm[0][7]);
+    J("\"cellbad\":%d,\"cellmin\":%d,\"cellminc\":%d,",
+      cellBad ? 1 : 0, cellMinV, cellMinIdx + 1);
+    // Balance map: bytes 4-5 of 0x18FF928E, one bit per cell, saying which
+    // cells the BMS is bleeding to pull the pack back into line. -1 = that
+    // frame not seen. The bit-to-cell mapping is unproven -- the field has
+    // only ever been observed at 0000 -- so the raw value goes out and nothing
+    // here names a cell from it. See docs/energy-can2.md.
+    J("\"balance\":%d,",
+      cellSeen[1] ? (cellFrm[1][4] | (cellFrm[1][5] << 8)) : -1);
     if (cellBad)
       J("\"cellbadago\":%lu,", (unsigned long)((millis() - cellBadAt) / 1000));
     J("\"cellraw\":[");
@@ -1125,8 +1106,7 @@ void sendState() {
       if (v == INT16_MIN) J("%snull", i ? "," : "");
       else J("%s%.0f", i ? "," : "", v / 10.0f * 9.0f / 5.0f + 32.0f);
     }
-    J("],\"tempnow\":%.1f,\"tempfill\":%u,\"temphours\":%d,",
-      temperatureRead() * 9.0f / 5.0f + 32.0f, tempFilled, TEMP_HOURS);
+    J("],\"tempfill\":%u,\"temphours\":%d,", tempFilled, TEMP_HOURS);
     if (hotAt)
       J("\"hotat\":%lu,\"hotago\":%lu,",
         (unsigned long)hotAt, (unsigned long)((millis() - hotAt) / 1000));
@@ -1191,16 +1171,6 @@ void sendState() {
              (faultB[0][0] | faultB[0][1]) ? "  PDM1 FAULT" : "",
              (faultB[1][0] | faultB[1][1]) ? "  PDM2 FAULT" : "");
     J("\"foot\":\"%s\"", ft);
-  }
-  {
-    // Raw HU level bytes, both PDMs, DO1..12 in order — the debug view that
-    // settles "which byte actually moved" without a second CAN logger.
-    char db[200];
-    int off = snprintf(db, sizeof db, "levels P1:");
-    for (int ch = 1; ch <= 12; ch++) off += snprintf(db + off, sizeof db - off, " %02X", doLevel[0][ch]);
-    off += snprintf(db + off, sizeof db - off, "  P2:");
-    for (int ch = 1; ch <= 12; ch++) off += snprintf(db + off, sizeof db - off, " %02X", doLevel[1][ch]);
-    J(",\"dbg\":\"%s\"", db);
   }
   J("}");
 out:
@@ -1286,7 +1256,6 @@ void onCmd() {
   } else if (c == "inv") {
     bool on = server.arg("on") == "1";
     sendInv(on);
-    invCmd = on ? 1 : 0;
     sendOK(on ? "inverter on" : "inverter off");
   } else {
     server.send(400, "text/plain", "unknown");
@@ -1392,7 +1361,6 @@ void canTask(void *) {
 // subtraction so the 49.7-day millis() rollover is handled -- this box can run
 // for months, and a naive comparison would corrupt the history at ~7 weeks.
 void tempTick() {
-  if (!tempOK) return;
   uint32_t now = millis();
   if ((uint32_t)(now - lastPulseLog) >= 300000UL) {   // 5-min alive pulse
     lastPulseLog = now;
@@ -1420,7 +1388,6 @@ void tempTick() {
       tempCnt++;
     }
     if (c > 85.0f) {                      // >185 F: streak in 30 s samples
-      if (hotStreakCnt == 0) hotStreakStart = now;
       hotStreakCnt++;
       if (hotStreakCnt == 120) hotAt = millis();   // one hour: latch/update
     } else hotStreakCnt = 0;
